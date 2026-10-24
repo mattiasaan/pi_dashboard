@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accedi · Pi Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1a19'/%3E%3Crect x='6' y='16' width='4' height='10' rx='1.5' fill='%233987e5'/%3E%3Crect x='14' y='8' width='4' height='18' rx='1.5' fill='%233987e5'/%3E%3Crect x='22' y='12' width='4' height='14' rx='1.5' fill='%233987e5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="login">
+  <form id="f" autocomplete="on">
+    <div>
+      <h1>Raspberry Pi</h1>
+      <p class="lead" style="margin:0">Inserisci la password per aprire la dashboard.</p>
+    </div>
+    <div class="field">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" autofocus required>
+    </div>
+    <p class="err" id="err" role="alert"></p>
+    <button class="btn primary" type="submit">Accedi</button>
+  </form>
+</main>
+<script>
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err'); err.textContent = '';
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: document.getElementById('pw').value }) });
+    if (r.ok) { location.href = '/'; return; }
+    const j = await r.json().catch(() => ({}));
+    err.textContent = j.detail || 'Accesso non riuscito';
+  } catch { err.textContent = 'Dashboard non raggiungibile'; }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+services:
+  pi-dashboard:
+    build: .
+    image: pi-dashboard:latest
+    container_name: pi-dashboard
+    restart: unless-stopped
+    # La rete e i PID dell'host servono per vedere l'intera macchina (interfacce, processi).
+    network_mode: host
+    pid: host
+    env_file: .env
+    environment:
+      SELF_IMAGE: pi-dashboard:latest
+      SELF_CONTAINER_NAME: pi-dashboard
+    volumes:
+      - ./data:/data                         # database e chiave di sessione
+      - /var/run/docker.sock:/var/run/docker.sock   # gestione container
+      - /:/host:ro,rslave                    # sola lettura: spazio disco e info di sistema

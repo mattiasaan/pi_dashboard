@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raspberry Pi · Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1a19'/%3E%3Crect x='6' y='16' width='4' height='10' rx='1.5' fill='%233987e5'/%3E%3Crect x='14' y='8' width='4' height='18' rx='1.5' fill='%233987e5'/%3E%3Crect x='22' y='12' width='4' height='14' rx='1.5' fill='%233987e5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><b id="host">Raspberry Pi</b><small id="model">&nbsp;</small></div>
+    <nav class="nav" aria-label="Sezioni">
+      <a href="#panoramica" data-tab="panoramica">Panoramica</a>
+      <a href="#storico" data-tab="storico">Storico</a>
+      <a href="#processi" data-tab="processi">Processi</a>
+      <a href="#container" data-tab="container">Container <span class="count" id="nav-ctr"></span></a>
+      <a href="#sistema" data-tab="sistema">Sistema</a>
+      <a href="#eventi" data-tab="eventi">Eventi</a>
+    </nav>
+    <div class="side-foot">
+      <div id="uptime">&nbsp;</div>
+      <button class="btn sm ghost" id="logout" type="button">Esci</button>
+    </div>
+  </aside>
+
+  <main>
+    <div id="banner" aria-live="polite"></div>
+
+    <!-- PANORAMICA -->
+    <section class="tab" id="tab-panoramica" hidden>
+      <h1>Panoramica</h1>
+      <p class="lead">Stato in tempo reale, aggiornato ogni 2 secondi.</p>
+      <div class="grid g4" id="tiles"></div>
+      <div class="grid g-main" style="margin-top:16px">
+        <div class="panel">
+          <div class="panel-head"><h2>Core della CPU</h2><span class="sub" id="cpu-sub"></span></div>
+          <div class="cores" id="cores"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>In breve</h2><span class="sub">Carico, rete e disco</span></div>
+          <dl class="kv" id="quick"></dl>
+        </div>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <div class="panel"><div class="panel-head"><h2>CPU</h2><span class="sub">Ultimi 5 minuti</span></div><div class="chart-box"><canvas id="c-live-cpu" role="img" aria-label="Utilizzo CPU negli ultimi 5 minuti"></canvas></div></div>
+        <div class="panel"><div class="panel-head"><h2>Rete</h2><div class="legend" id="lg-live-net"></div></div><div class="chart-box"><canvas id="c-live-net" role="img" aria-label="Traffico di rete negli ultimi 5 minuti"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- STORICO -->
+    <section class="tab" id="tab-storico" hidden>
+      <h1>Storico</h1>
+      <p class="lead" id="hist-lead">Le misure vengono salvate nel database e conservate per <span id="ret-days">30</span> giorni.</p>
+      <div class="toolbar">
+        <div class="seg" id="range" role="group" aria-label="Intervallo">
+          <button type="button" data-r="1h" aria-pressed="true">1 ora</button>
+          <button type="button" data-r="6h" aria-pressed="false">6 ore</button>
+          <button type="button" data-r="24h" aria-pressed="false">24 ore</button>
+          <button type="button" data-r="7d" aria-pressed="false">7 giorni</button>
+          <button type="button" data-r="30d" aria-pressed="false">30 giorni</button>
+        </div>
+        <span class="grow"></span>
+        <button class="btn" id="csv" type="button">Scarica CSV</button>
+      </div>
+      <div class="grid g2" id="hist-grid"></div>
+    </section>
+
+    <!-- PROCESSI -->
+    <section class="tab" id="tab-processi" hidden>
+      <h1>Processi</h1>
+      <p class="lead">Tutti i processi dell'host. Il CPU è in percentuale sul totale dei core.</p>
+      <div class="toolbar">
+        <input type="search" id="p-q" placeholder="Cerca per nome, comando o PID" aria-label="Cerca processi" style="min-width:260px">
+        <span class="grow"></span>
+        <span class="muted" id="p-count"></span>
+      </div>
+      <div class="panel" style="padding:0">
+        <div class="tbl-wrap" style="max-height:68vh; overflow:auto">
+          <table>
+            <thead><tr>
+              <th class="num"><button type="button" data-s="pid" aria-pressed="false">PID</button></th>
+              <th><button type="button" data-s="name" aria-pressed="false">Nome</button></th>
+              <th>Utente</th>
+              <th class="num"><button type="button" data-s="cpu" aria-pressed="true">CPU %</button></th>
+              <th class="num"><button type="button" data-s="mem" aria-pressed="false">Memoria</button></th>
+              <th>Stato</th><th>Comando</th><th></th>
+            </tr></thead>
+            <tbody id="p-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTAINER -->
+    <section class="tab" id="tab-container" hidden>
+      <h1>Container</h1>
+      <p class="lead">Avvia, ferma o riavvia i container Docker e leggi i log.</p>
+      <div id="ctr-msg"></div>
+      <div class="panel" style="padding:0">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Nome</th><th>Stato</th><th>Immagine</th><th>Porte</th><th class="num">CPU</th><th>Memoria</th><th></th></tr></thead>
+            <tbody id="c-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SISTEMA -->
+    <section class="tab" id="tab-sistema" hidden>
+      <h1>Sistema</h1>
+      <p class="lead">Informazioni sul Raspberry, alimentazione, dischi, rete e impostazioni.</p>
+      <div class="grid g2">
+        <div class="panel"><div class="panel-head"><h2>Dispositivo</h2></div><dl class="kv" id="sys-info"></dl></div>
+        <div class="panel"><div class="panel-head"><h2>Alimentazione e frequenza</h2></div><div class="rows" id="sys-pi"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Dischi</h2></div><div class="rows" id="sys-disks"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Rete</h2></div><div class="rows" id="sys-net"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Soglie degli avvisi</h2><span class="sub" id="tg-note"></span></div>
+          <form id="alert-form">
+            <div class="form-grid" id="alert-fields"></div>
+            <div class="actions" style="display:flex;gap:8px;margin-top:6px">
+              <button class="btn primary" type="submit">Salva soglie</button>
+              <button class="btn" type="button" id="tg-test">Invia prova Telegram</button>
+            </div>
+          </form>
+        </div>
+        <div class="panel"><div class="panel-head"><h2>Database e alimentazione</h2></div>
+          <dl class="kv" id="sys-db"></dl>
+          <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+            <button class="btn" id="btn-reboot" type="button">Riavvia il Raspberry</button>
+            <button class="btn danger" id="btn-shutdown" type="button">Spegni il Raspberry</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EVENTI -->
+    <section class="tab" id="tab-eventi" hidden>
+      <h1>Eventi</h1>
+      <p class="lead">Avvisi, azioni dalla dashboard e cambi di stato dei container.</p>
+      <div class="toolbar">
+        <div class="seg" id="ev-filter" role="group" aria-label="Filtra per gravità">
+          <button type="button" data-l="" aria-pressed="true">Tutti</button>
+          <button type="button" data-l="crit" aria-pressed="false">Critici</button>
+          <button type="button" data-l="warn" aria-pressed="false">Avvisi</button>
+          <button type="button" data-l="info" aria-pressed="false">Info</button>
+        </div>
+      </div>
+      <div class="panel" style="padding:0"><div class="tbl-wrap">
+        <table><thead><tr><th>Quando</th><th>Gravità</th><th>Origine</th><th>Messaggio</th></tr></thead><tbody id="ev-body"></tbody></table>
+      </div></div>
+    </section>
+  </main>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+
+<dialog id="dlg-confirm"><form method="dialog">
+  <h2 id="cf-title"></h2><p id="cf-text" class="muted" style="margin:0"></p>
+  <div class="field" id="cf-pw-wrap" style="margin-top:14px" hidden><label for="cf-pw">Password della dashboard</label><input type="password" id="cf-pw" autocomplete="current-password"></div>
+  <div class="actions"><button class="btn" value="cancel" type="submit">Annulla</button><button class="btn primary" id="cf-ok" value="ok" type="submit">Conferma</button></div>
+</form></dialog>
+
+<dialog id="dlg-logs" class="wide">
+  <div class="panel-head" style="margin-bottom:0"><h2 id="lg-title">Log</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label class="muted" for="lg-tail">Righe</label>
+      <select id="lg-tail"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select>
+      <button class="btn sm" id="lg-refresh" type="button">Aggiorna</button>
+      <button class="btn sm" id="lg-close" type="button">Chiudi</button>
+    </div></div>
+  <pre class="logs" id="lg-pre" tabindex="0"></pre>
+</dialog>
+
+<script src="/static/vendor/chart.umd.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
