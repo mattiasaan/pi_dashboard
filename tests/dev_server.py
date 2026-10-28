@@ -40,6 +40,17 @@ db.add_event("info", "alert", "Rientrato: Temperatura alta", now - 3800)
 db.add_event("crit", "container", "Il container «nextcloud» si è fermato (codice 137)", now - 900)
 db.add_event("info", "container", "Container «pihole» riavviato dalla dashboard", now - 300)
 
+# controlli di esempio con storico
+for name, kind, target, ok_rate in (("Internet", "tcp", "1.1.1.1:443", 1.0), ("Router", "tcp", "192.168.1.1:80", 0.97), ("Immich", "http", "https://raspbot.example.ts.net", 1.0)):
+    cid = db.add_check(name, kind, target, 60)
+    for i in range(60):
+        ok = random.random() < ok_rate
+        db.insert_check_result(cid, now - (60 - i) * 60, ok, 8 + random.random() * 30 if ok else None, None if ok else "timeout")
+bad = db.add_check("NAS", "tcp", "192.168.1.50:445", 60)
+for i in range(60):
+    db.insert_check_result(bad, now - (60 - i) * 60, i < 40, 12.0 if i < 40 else None, None if i < 40 else "timeout")
+db.set_setting("autorestart", {"pihole": {"enabled": True}})
+
 fake_docker.install()
 import uvicorn  # noqa: E402
 uvicorn.run("app.main:app", host="127.0.0.1", port=int(os.environ.get("PORT", "8099")), log_level="warning")

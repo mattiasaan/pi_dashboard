@@ -2,22 +2,46 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#131312">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Raspberry">
 <title>Raspberry Pi · Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1a19'/%3E%3Crect x='6' y='16' width='4' height='10' rx='1.5' fill='%233987e5'/%3E%3Crect x='14' y='8' width='4' height='18' rx='1.5' fill='%233987e5'/%3E%3Crect x='22' y='12' width='4' height='14' rx='1.5' fill='%233987e5'/%3E%3C/svg%3E">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></symbol>
+    <symbol id="i-proc" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7z"/><path d="m3.5 7 8.5 4.5L20.5 7M12 11.5v10"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h4l3-8 5 16 3-8h5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2.1 2.1M16.9 16.9 19 19M5 19l2.1-2.1M16.9 7.1 19 5"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8z"/><path d="M10 21a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8 21h8M12 16.5V21"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></g></symbol>
+  </defs>
+</svg>
+
 <div class="app">
   <aside class="side">
     <div class="brand"><b id="host">Raspberry Pi</b><small id="model">&nbsp;</small></div>
     <nav class="nav" aria-label="Sezioni">
-      <a href="#panoramica" data-tab="panoramica">Panoramica</a>
-      <a href="#storico" data-tab="storico">Storico</a>
-      <a href="#processi" data-tab="processi">Processi</a>
-      <a href="#container" data-tab="container">Container <span class="count" id="nav-ctr"></span></a>
-      <a href="#sistema" data-tab="sistema">Sistema</a>
-      <a href="#eventi" data-tab="eventi">Eventi</a>
+      <a href="#panoramica" data-tab="panoramica"><svg class="ic"><use href="#i-overview"/></svg><span class="lb">Panoramica</span></a>
+      <a href="#storico" data-tab="storico"><svg class="ic"><use href="#i-history"/></svg><span class="lb">Storico</span></a>
+      <a href="#processi" data-tab="processi"><svg class="ic"><use href="#i-proc"/></svg><span class="lb">Processi</span></a>
+      <a href="#container" data-tab="container"><svg class="ic"><use href="#i-box"/></svg><span class="lb">Container</span><span class="count" id="nav-ctr"></span></a>
+      <a href="#monitor" data-tab="monitor"><svg class="ic"><use href="#i-pulse"/></svg><span class="lb">Monitor</span><span class="count" id="nav-mon"></span></a>
+      <a href="#sistema" data-tab="sistema"><svg class="ic"><use href="#i-gear"/></svg><span class="lb">Sistema</span></a>
+      <a href="#eventi" data-tab="eventi"><svg class="ic"><use href="#i-bell"/></svg><span class="lb">Eventi</span></a>
+      <a href="#schermo" data-tab="schermo"><svg class="ic"><use href="#i-screen"/></svg><span class="lb">Schermo</span></a>
     </nav>
     <div class="side-foot">
       <div id="uptime">&nbsp;</div>
@@ -25,7 +49,7 @@
     </div>
   </aside>
 
-  <main>
+  <main id="main">
     <div id="banner" aria-live="polite"></div>
 
     <!-- PANORAMICA -->
@@ -33,7 +57,7 @@
       <h1>Panoramica</h1>
       <p class="lead">Stato in tempo reale, aggiornato ogni 2 secondi.</p>
       <div class="grid g4" id="tiles"></div>
-      <div class="grid g-main" style="margin-top:16px">
+      <div class="grid g-main mt">
         <div class="panel">
           <div class="panel-head"><h2>Core della CPU</h2><span class="sub" id="cpu-sub"></span></div>
           <div class="cores" id="cores"></div>
@@ -43,7 +67,21 @@
           <dl class="kv" id="quick"></dl>
         </div>
       </div>
-      <div class="grid g2" style="margin-top:16px">
+      <div class="grid g3 mt">
+        <div class="panel">
+          <div class="panel-head"><h2>Container</h2><a class="sub link" href="#container">Apri</a></div>
+          <div id="ov-ctr" class="rows"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Processi più attivi</h2><a class="sub link" href="#processi">Apri</a></div>
+          <div id="ov-top" class="rows"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Monitor</h2><a class="sub link" href="#monitor">Apri</a></div>
+          <div id="ov-mon" class="rows"></div>
+        </div>
+      </div>
+      <div class="grid g2 mt">
         <div class="panel"><div class="panel-head"><h2>CPU</h2><span class="sub">Ultimi 5 minuti</span></div><div class="chart-box"><canvas id="c-live-cpu" role="img" aria-label="Utilizzo CPU negli ultimi 5 minuti"></canvas></div></div>
         <div class="panel"><div class="panel-head"><h2>Rete</h2><div class="legend" id="lg-live-net"></div></div><div class="chart-box"><canvas id="c-live-net" role="img" aria-label="Traffico di rete negli ultimi 5 minuti"></canvas></div></div>
       </div>
@@ -54,7 +92,7 @@
       <h1>Storico</h1>
       <p class="lead" id="hist-lead">Le misure vengono salvate nel database e conservate per <span id="ret-days">30</span> giorni.</p>
       <div class="toolbar">
-        <div class="seg" id="range" role="group" aria-label="Intervallo">
+        <div class="seg scroll" id="range" role="group" aria-label="Intervallo">
           <button type="button" data-r="1h" aria-pressed="true">1 ora</button>
           <button type="button" data-r="6h" aria-pressed="false">6 ore</button>
           <button type="button" data-r="24h" aria-pressed="false">24 ore</button>
@@ -70,22 +108,23 @@
     <!-- PROCESSI -->
     <section class="tab" id="tab-processi" hidden>
       <h1>Processi</h1>
-      <p class="lead">Tutti i processi dell'host. Il CPU è in percentuale sul totale dei core.</p>
+      <p class="lead">Tutti i processi dell'host. Tocca un processo per i dettagli e per fermarlo.</p>
       <div class="toolbar">
-        <input type="search" id="p-q" placeholder="Cerca per nome, comando o PID" aria-label="Cerca processi" style="min-width:260px">
+        <input type="search" id="p-q" placeholder="Cerca per nome, comando o PID" aria-label="Cerca processi" class="grow-min">
+        <label class="switch"><input type="checkbox" id="p-group"><span class="track"></span><span>Raggruppa per nome</span></label>
         <span class="grow"></span>
         <span class="muted" id="p-count"></span>
       </div>
-      <div class="panel" style="padding:0">
-        <div class="tbl-wrap" style="max-height:68vh; overflow:auto">
+      <div class="panel flush">
+        <div class="tbl-wrap tall-scroll">
           <table>
             <thead><tr>
-              <th class="num"><button type="button" data-s="pid" aria-pressed="false">PID</button></th>
+              <th class="num hide-sm"><button type="button" data-s="pid" aria-pressed="false">PID</button></th>
               <th><button type="button" data-s="name" aria-pressed="false">Nome</button></th>
-              <th>Utente</th>
+              <th class="hide-sm">Utente</th>
               <th class="num"><button type="button" data-s="cpu" aria-pressed="true">CPU %</button></th>
               <th class="num"><button type="button" data-s="mem" aria-pressed="false">Memoria</button></th>
-              <th>Stato</th><th>Comando</th><th></th>
+              <th class="hide-sm">Stato</th><th class="hide-md">Comando</th>
             </tr></thead>
             <tbody id="p-body"></tbody>
           </table>
@@ -96,16 +135,27 @@
     <!-- CONTAINER -->
     <section class="tab" id="tab-container" hidden>
       <h1>Container</h1>
-      <p class="lead">Avvia, ferma o riavvia i container Docker e leggi i log.</p>
+      <p class="lead">Tutti i container presenti su Docker, anche quelli fermi. Avviali, fermali o attiva il riavvio automatico.</p>
       <div id="ctr-msg"></div>
-      <div class="panel" style="padding:0">
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Nome</th><th>Stato</th><th>Immagine</th><th>Porte</th><th class="num">CPU</th><th>Memoria</th><th></th></tr></thead>
-            <tbody id="c-body"></tbody>
-          </table>
+      <div class="toolbar" id="ctr-tools">
+        <div class="seg scroll" id="ctr-filter" role="group" aria-label="Filtra container">
+          <button type="button" data-f="all" aria-pressed="true">Tutti <span class="n" id="n-all"></span></button>
+          <button type="button" data-f="running" aria-pressed="false">In esecuzione <span class="n" id="n-run"></span></button>
+          <button type="button" data-f="stopped" aria-pressed="false">Fermi <span class="n" id="n-stop"></span></button>
         </div>
+        <input type="search" id="c-q" placeholder="Cerca container" aria-label="Cerca container" class="grow-min">
+        <span class="grow"></span>
+        <button class="btn primary" id="c-startall" type="button" hidden>Avvia tutti i fermi</button>
       </div>
+      <div id="c-list"></div>
+    </section>
+
+    <!-- MONITOR -->
+    <section class="tab" id="tab-monitor" hidden>
+      <h1>Monitor</h1>
+      <p class="lead">Controlla che Internet, i tuoi servizi e gli altri dispositivi rispondano. Ricevi un avviso quando uno smette di rispondere.</p>
+      <div class="toolbar"><span class="grow"></span><button class="btn primary" id="chk-add" type="button">Aggiungi controllo</button></div>
+      <div id="chk-list" class="grid g-cards"></div>
     </section>
 
     <!-- SISTEMA -->
@@ -115,22 +165,29 @@
       <div class="grid g2">
         <div class="panel"><div class="panel-head"><h2>Dispositivo</h2></div><dl class="kv" id="sys-info"></dl></div>
         <div class="panel"><div class="panel-head"><h2>Alimentazione e frequenza</h2></div><div class="rows" id="sys-pi"></div></div>
-        <div class="panel"><div class="panel-head"><h2>Dischi</h2></div><div class="rows" id="sys-disks"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Dischi</h2></div><div class="rows" id="sys-disks"></div><p class="muted forecast" id="sys-forecast"></p></div>
         <div class="panel"><div class="panel-head"><h2>Rete</h2></div><div class="rows" id="sys-net"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Spazio usato da Docker</h2><button class="btn sm" id="dk-calc" type="button">Calcola</button></div>
+          <div id="dk-body" class="rows"><p class="muted" style="margin:0">Il calcolo può richiedere qualche secondo.</p></div></div>
         <div class="panel"><div class="panel-head"><h2>Soglie degli avvisi</h2><span class="sub" id="tg-note"></span></div>
           <form id="alert-form">
             <div class="form-grid" id="alert-fields"></div>
-            <div class="actions" style="display:flex;gap:8px;margin-top:6px">
+            <div class="actions-row">
               <button class="btn primary" type="submit">Salva soglie</button>
               <button class="btn" type="button" id="tg-test">Invia prova Telegram</button>
             </div>
           </form>
         </div>
-        <div class="panel"><div class="panel-head"><h2>Database e alimentazione</h2></div>
+        <div class="panel"><div class="panel-head"><h2>Database</h2></div>
           <dl class="kv" id="sys-db"></dl>
-          <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+          <div class="actions-row"><a class="btn" href="/api/db/download" download>Scarica una copia del database</a></div>
+        </div>
+        <div class="panel"><div class="panel-head"><h2>Alimentazione e sessione</h2></div>
+          <p class="muted" style="margin-top:0">Riavvio e spegnimento chiedono di nuovo la password.</p>
+          <div class="actions-row">
             <button class="btn" id="btn-reboot" type="button">Riavvia il Raspberry</button>
             <button class="btn danger" id="btn-shutdown" type="button">Spegni il Raspberry</button>
+            <button class="btn ghost" id="logout2" type="button">Esci dalla dashboard</button>
           </div>
         </div>
       </div>
@@ -139,40 +196,117 @@
     <!-- EVENTI -->
     <section class="tab" id="tab-eventi" hidden>
       <h1>Eventi</h1>
-      <p class="lead">Avvisi, azioni dalla dashboard e cambi di stato dei container.</p>
+      <p class="lead">Avvisi, azioni fatte dalla dashboard e cambi di stato dei container.</p>
       <div class="toolbar">
-        <div class="seg" id="ev-filter" role="group" aria-label="Filtra per gravità">
+        <div class="seg scroll" id="ev-filter" role="group" aria-label="Filtra per gravità">
           <button type="button" data-l="" aria-pressed="true">Tutti</button>
           <button type="button" data-l="crit" aria-pressed="false">Critici</button>
           <button type="button" data-l="warn" aria-pressed="false">Avvisi</button>
           <button type="button" data-l="info" aria-pressed="false">Info</button>
         </div>
+        <select id="ev-kind" aria-label="Filtra per origine">
+          <option value="">Tutte le origini</option><option value="alert">Soglie</option><option value="container">Container</option>
+          <option value="monitor">Monitor</option><option value="process">Processi</option><option value="power">Alimentazione</option>
+          <option value="auth">Accessi</option><option value="system">Sistema</option>
+        </select>
       </div>
-      <div class="panel" style="padding:0"><div class="tbl-wrap">
-        <table><thead><tr><th>Quando</th><th>Gravità</th><th>Origine</th><th>Messaggio</th></tr></thead><tbody id="ev-body"></tbody></table>
+      <div class="panel flush"><div class="tbl-wrap">
+        <table><thead><tr><th>Quando</th><th>Gravità</th><th class="hide-sm">Origine</th><th>Messaggio</th></tr></thead><tbody id="ev-body"></tbody></table>
       </div></div>
+    </section>
+
+    <!-- SCHERMO -->
+    <section class="tab" id="tab-schermo" hidden>
+      <div class="kiosk">
+        <header class="k-head">
+          <div><div class="k-clock" id="k-time">--:--</div><div class="k-date" id="k-date"></div></div>
+          <div class="k-right">
+            <div class="k-host" id="k-host"></div>
+            <div class="k-btns">
+              <button class="btn sm ghost" id="k-full" type="button">Schermo intero</button>
+              <a class="btn sm ghost" href="#panoramica" id="k-exit">Esci dalla modalità schermo</a>
+            </div>
+          </div>
+        </header>
+        <div class="k-tiles" id="k-tiles"></div>
+        <div class="k-row">
+          <div class="panel k-panel"><h2>Core della CPU</h2><div class="cores k-cores" id="k-cores"></div></div>
+          <div class="panel k-panel"><h2>Rete</h2><div class="k-net" id="k-net"></div></div>
+        </div>
+        <div class="k-row k-row3">
+          <div class="panel k-panel"><h2>Container</h2><div id="k-ctr" class="rows"></div></div>
+          <div class="panel k-panel"><h2>Monitor</h2><div id="k-mon" class="rows"></div></div>
+          <div class="panel k-panel"><h2>Processi più attivi</h2><div id="k-top" class="rows"></div></div>
+        </div>
+      </div>
     </section>
   </main>
 </div>
 
+<!-- barra in basso (telefono) -->
+<nav class="tabbar" aria-label="Navigazione principale">
+  <a href="#panoramica" data-tab="panoramica"><svg class="ic"><use href="#i-overview"/></svg><span>Panoramica</span></a>
+  <a href="#container" data-tab="container"><svg class="ic"><use href="#i-box"/></svg><span>Container</span><i class="dot" id="tb-ctr" hidden></i></a>
+  <a href="#processi" data-tab="processi"><svg class="ic"><use href="#i-proc"/></svg><span>Processi</span></a>
+  <a href="#storico" data-tab="storico"><svg class="ic"><use href="#i-history"/></svg><span>Storico</span></a>
+  <button type="button" id="tb-more" aria-haspopup="dialog"><svg class="ic"><use href="#i-more"/></svg><span>Altro</span><i class="dot" id="tb-mon" hidden></i></button>
+</nav>
+
 <div id="toasts" aria-live="polite"></div>
 
-<dialog id="dlg-confirm"><form method="dialog">
+<dialog id="dlg-more" class="sheet">
+  <h2>Altre sezioni</h2>
+  <nav class="more-list" aria-label="Altre sezioni">
+    <a href="#monitor" data-tab="monitor"><svg class="ic"><use href="#i-pulse"/></svg>Monitor<span class="count" id="more-mon"></span></a>
+    <a href="#sistema" data-tab="sistema"><svg class="ic"><use href="#i-gear"/></svg>Sistema</a>
+    <a href="#eventi" data-tab="eventi"><svg class="ic"><use href="#i-bell"/></svg>Eventi</a>
+    <a href="#schermo" data-tab="schermo"><svg class="ic"><use href="#i-screen"/></svg>Modalità schermo</a>
+  </nav>
+  <div class="actions"><button class="btn" id="more-close" type="button">Chiudi</button></div>
+</dialog>
+
+<dialog id="dlg-confirm" class="sheet"><form method="dialog">
   <h2 id="cf-title"></h2><p id="cf-text" class="muted" style="margin:0"></p>
   <div class="field" id="cf-pw-wrap" style="margin-top:14px" hidden><label for="cf-pw">Password della dashboard</label><input type="password" id="cf-pw" autocomplete="current-password"></div>
   <div class="actions"><button class="btn" value="cancel" type="submit">Annulla</button><button class="btn primary" id="cf-ok" value="ok" type="submit">Conferma</button></div>
 </form></dialog>
 
-<dialog id="dlg-logs" class="wide">
-  <div class="panel-head" style="margin-bottom:0"><h2 id="lg-title">Log</h2>
-    <div style="display:flex;gap:8px;align-items:center">
-      <label class="muted" for="lg-tail">Righe</label>
-      <select id="lg-tail"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select>
+<dialog id="dlg-logs" class="wide sheet">
+  <div class="dlg-head"><h2 id="lg-title">Log</h2>
+    <div class="dlg-tools">
+      <label class="switch"><input type="checkbox" id="lg-live"><span class="track"></span><span>In diretta</span></label>
+      <select id="lg-tail" aria-label="Numero di righe"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select>
       <button class="btn sm" id="lg-refresh" type="button">Aggiorna</button>
       <button class="btn sm" id="lg-close" type="button">Chiudi</button>
     </div></div>
   <pre class="logs" id="lg-pre" tabindex="0"></pre>
 </dialog>
+
+<dialog id="dlg-proc" class="sheet">
+  <div class="dlg-head"><h2 id="pd-title">Processo</h2><button class="btn sm ghost" id="pd-close" type="button">Chiudi</button></div>
+  <dl class="kv" id="pd-body"></dl>
+  <div class="actions wrap" id="pd-actions"></div>
+</dialog>
+
+<dialog id="dlg-ctr" class="sheet">
+  <div class="dlg-head"><h2 id="cd-title">Container</h2><button class="btn sm ghost" id="cd-close" type="button">Chiudi</button></div>
+  <dl class="kv" id="cd-body"></dl>
+</dialog>
+
+<dialog id="dlg-check" class="sheet"><form id="chk-form" method="dialog">
+  <h2>Nuovo controllo</h2>
+  <div class="chips" id="chk-presets" aria-label="Esempi"></div>
+  <div class="field"><label for="chk-name">Nome</label><input id="chk-name" type="text" maxlength="40" required placeholder="Es. Internet"></div>
+  <div class="form-grid">
+    <div class="field"><label for="chk-kind">Tipo</label>
+      <select id="chk-kind"><option value="tcp">Porta TCP (host:porta)</option><option value="http">Pagina web (http/https)</option></select></div>
+    <div class="field"><label for="chk-int">Ogni</label>
+      <select id="chk-int"><option value="30">30 secondi</option><option value="60" selected>1 minuto</option><option value="300">5 minuti</option><option value="900">15 minuti</option></select></div>
+  </div>
+  <div class="field"><label for="chk-target" id="chk-target-l">Indirizzo</label><input id="chk-target" type="text" required placeholder="1.1.1.1:443" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+  <p class="err" id="chk-err" role="alert"></p>
+  <div class="actions"><button class="btn" value="cancel" type="button" id="chk-cancel">Annulla</button><button class="btn primary" type="submit">Aggiungi</button></div>
+</form></dialog>
 
 <script src="/static/vendor/chart.umd.js"></script>
 <script src="/static/app.js"></script>

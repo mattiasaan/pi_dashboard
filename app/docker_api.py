@@ -118,6 +118,10 @@ def list_containers(with_stats: bool = True) -> list[dict]:
             "restart_policy": (c.attrs.get("HostConfig", {}).get("RestartPolicy") or {}).get("Name") or "no",
             "ports": _ports(c), "cpu": s.get("cpu"), "mem_used": s.get("mem_used"),
             "mem_limit": s.get("mem_limit"), "is_self": _is_self(c),
+            "project": (c.labels or {}).get("com.docker.compose.project"),
+            "service": (c.labels or {}).get("com.docker.compose.service"),
+            "finished_at": c.attrs.get("State", {}).get("FinishedAt"),
+            "oom_killed": bool(c.attrs.get("State", {}).get("OOMKilled")),
         })
     out.sort(key=lambda x: (x["status"] != "running", x["name"].lower()))
     return out
@@ -169,3 +173,68 @@ def reboot_host(action_name: str) -> None:
         ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "sh", "-c", f"sleep 2; {cmd}"],
         privileged=True, pid_mode="host", remove=True, detach=True, entrypoint="",
     )
+
+
+# ---------------------------------------------------------------- dettagli, spazio, pulizia
+def details(name: str) -> dict:
+    """Riepilogo di `docker inspect` senza valori delle variabili d'ambiente (possono contenere segreti)."""
+    a = _get(name).attrs
+    cfg, st, host = a.get("Config", {}), a.get("State", {}), a.get("HostConfig", {})
+    nets = (a.get("NetworkSettings", {}).get("Networks") or {})
+    return {
+        "name": a.get("Name", "").lstrip("/"), "id": (a.get("Id") or "")[:12], "image": cfg.get("Image"),
+        "created": a.get("Created"), "started_at": st.get("StartedAt"), "finished_at": st.get("FinishedAt"),
+        "status": st.get("Status"), "exit_code": st.get("ExitCode"), "oom_killed": bool(st.get("OOMKilled")),
+        "error": st.get("Error") or None, "restart_count": a.get("RestartCount", 0),
+        "restart_policy": (host.get("RestartPolicy") or {}).get("Name") or "no",
+        "command": " ".join((cfg.get("Entrypoint") or []) + (cfg.get("Cmd") or [])) or None,
+        "user": cfg.get("User") or "root", "workdir": cfg.get("WorkingDir") or None,
+        "network_mode": host.get("NetworkMode"),
+        "networks": [{"name": n, "ip": v.get("IPAddress") or None} for n, v in nets.items()],
+        "mounts": [{"source": m.get("Source") or m.get("Name"), "target": m.get("Destination"),
+                    "rw": bool(m.get("RW")), "type": m.get("Type")} for m in a.get("Mounts", [])],
+        "env_names": sorted(e.split("=", 1)[0] for e in (cfg.get("Env") or [])),
+        "project": (cfg.get("Labels") or {}).get("com.docker.compose.project"),
+        "memory_limit": host.get("Memory") or None,
+    }
+
+
+def usage() -> dict:
+    """Spazio occupato da Docker (come `docker system df`) e quanto si può recuperare."""
+    try:
+        df = client().df()
+    except DockerException as e:
+        raise DockerUnavailable(str(e)) from e
+    images = df.get("Images") or []
+    unused = [i for i in images if not i.get("Containers")]
+    dangling = [i for i in images if not (i.get("RepoTags") or []) or i.get("RepoTags") == ["<none>:<none>"]]
+    vols = df.get("Volumes") or []
+    cache = df.get("BuildCache") or []
+    pos = lambda n: n if isinstance(n, int) and n > 0 else 0
+    return {
+        "images": {"count": len(images), "size": sum(pos(i.get("Size")) for i in images),
+                   "unused_size": sum(pos(i.get("Size")) for i in unused), "unused_count": len(unused),
+                   "dangling_count": len(dangling), "dangling_size": sum(pos(i.get("Size")) for i in dangling)},
+        "containers": {"count": len(df.get("Containers") or []),
+                       "size": sum(pos(c.get("SizeRw")) for c in df.get("Containers") or [])},
+        "volumes": {"count": len(vols), "size": sum(pos((v.get("UsageData") or {}).get("Size")) for v in vols)},
+        "build_cache": {"count": len(cache), "size": sum(pos(b.get("Size")) for b in cache),
+                        "reclaimable": sum(pos(b.get("Size")) for b in cache if not b.get("InUse"))},
+    }
+
+
+def prune(what: str) -> dict:
+    """Pulizia sicura: solo immagini senza nome e cache di build. Non tocca container né volumi."""
+    cl = client()
+    try:
+        if what == "images":
+            r = cl.images.prune(filters={"dangling": True})
+            return {"reclaimed": r.get("SpaceReclaimed", 0), "removed": len(r.get("ImagesDeleted") or [])}
+        if what == "build_cache":
+            r = cl.api.prune_builds()
+            return {"reclaimed": r.get("SpaceReclaimed", 0), "removed": len(r.get("CachesDeleted") or [])}
+    except APIError as e:
+        raise RuntimeError(e.explanation or str(e)) from e
+    except DockerException as e:
+        raise DockerUnavailable(str(e)) from e
+    raise ValueError("Operazione non valida")

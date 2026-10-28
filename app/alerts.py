@@ -11,7 +11,7 @@ DEFAULTS = {
     "temp_warn": 75, "temp_crit": 82,
     "cpu_high": 90, "cpu_secs": 120,
     "mem_high": 90, "disk_high": 90,
-    "power_alerts": True, "container_alerts": True,
+    "power_alerts": True, "container_alerts": True, "monitor_alerts": True,
     "telegram": True,
 }
 LIMITS = {

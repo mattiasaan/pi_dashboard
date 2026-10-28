@@ -289,3 +289,30 @@ def signal_process(pid: int, sig: str) -> str:
     name = p.name()
     p.send_signal(s)
     return name
+
+
+def process_detail(pid: int) -> dict:
+    """Dettagli di un processo; i campi non leggibili restano None."""
+    p = psutil.Process(pid)
+
+    def get(fn, default=None):
+        try:
+            return fn()
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError, ValueError):
+            return default
+
+    mem = get(p.memory_info)
+    parent = get(p.parent)
+    ports = []
+    for c in get(lambda: p.net_connections(kind="inet"), []) or []:
+        if c.status == "LISTEN":
+            ports.append(f"{c.laddr.ip}:{c.laddr.port}")
+    return {
+        "pid": pid, "name": get(p.name), "exe": get(p.exe), "cmdline": " ".join(get(p.cmdline, []) or []),
+        "user": get(p.username), "status": get(p.status), "started": int(get(p.create_time, 0) or 0),
+        "threads": get(p.num_threads), "nice": get(p.nice), "cwd": get(p.cwd),
+        "rss": mem.rss if mem else None, "vms": mem.vms if mem else None,
+        "fds": get(p.num_fds), "parent": {"pid": parent.pid, "name": get(parent.name)} if parent else None,
+        "children": len(get(p.children, []) or []), "listening": sorted(set(ports))[:12],
+        "protected": pid in PROTECTED_PIDS or pid == os.getpid(),
+    }
