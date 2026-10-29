@@ -1,4 +1,3 @@
-import os
 import subprocess
 import sys
 import time
@@ -6,7 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, docker_api
+from app import docker_api
 from app.main import app
 from tests import fake_docker
 

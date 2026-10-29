@@ -13,6 +13,7 @@ import psutil
 
 from . import config
 
+SYS = "/sys"   # radice di sysfs (cambia solo nei test)
 _REAL_FS = {"ext4", "ext3", "ext2", "vfat", "exfat", "ntfs", "ntfs3", "btrfs", "xfs", "f2fs"}
 
 # bit di get_throttled (documentazione Raspberry Pi)
@@ -44,7 +45,7 @@ def host_path(p: str) -> str:
 
 # ---------------------------------------------------------------- temperatura / Pi
 def cpu_temp() -> float | None:
-    v = _read("/sys/class/thermal/thermal_zone0/temp")
+    v = _read(f"{SYS}/class/thermal/thermal_zone0/temp")
     if v:
         try:
             return round(int(v) / 1000, 1)
@@ -61,7 +62,7 @@ def cpu_temp() -> float | None:
 
 
 def cpu_freq_mhz() -> float | None:
-    v = _read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+    v = _read(f"{SYS}/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
     if v:
         try:
             return round(int(v) / 1000)
@@ -84,9 +85,10 @@ def _throttled_raw() -> int | None:
                 return int(out.split("=")[1].strip(), 16)
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
-    for pattern in ("/sys/devices/platform/soc/*firmware*/get_throttled",
-                    "/sys/devices/platform/*firmware*/get_throttled",
-                    "/sys/devices/platform/*/*firmware*/get_throttled"):
+    for pattern in (f"{SYS}/devices/platform/soc/*firmware*/get_throttled",
+                    f"{SYS}/devices/platform/*firmware*/get_throttled",
+                    f"{SYS}/devices/platform/*/*firmware*/get_throttled",
+                    f"{SYS}/devices/platform/*/*/*firmware*/get_throttled"):
         for path in glob.glob(pattern):
             v = _read(path)
             if v:
@@ -105,11 +107,42 @@ def decode_throttled(raw: int | None) -> dict:
     return {"available": True, "raw": hex(raw), "flags": flags, "messages": messages}
 
 
+def _hwmon_dirs() -> list[str]:
+    return sorted(glob.glob(f"{SYS}/class/hwmon/hwmon*")) + sorted(glob.glob(f"{SYS}/devices/platform/cooling_fan/hwmon/hwmon*"))
+
+
+def undervoltage_hwmon() -> bool | None:
+    """Sotto-tensione ora, dal driver hwmon del Raspberry (rpi_volt): c'è su tutti i modelli recenti, Pi 5 compreso."""
+    for d in _hwmon_dirs():
+        if _read(f"{d}/name") == "rpi_volt":
+            v = _read(f"{d}/in0_lcrit_alarm")
+            if v in ("0", "1"):
+                return v == "1"
+    return None
+
+
+def fan_info() -> dict | None:
+    """Ventola (per esempio l'Active Cooler del Pi 5): giri al minuto e, se noto, la velocità in %."""
+    for d in _hwmon_dirs():
+        rpm = _read(f"{d}/fan1_input")
+        if rpm and rpm.isdigit():
+            pwm = _read(f"{d}/pwm1")
+            return {"rpm": int(rpm), "percent": round(int(pwm) / 255 * 100) if pwm and pwm.isdigit() else None}
+    return None
+
+
 def pi_status() -> dict:
     d = decode_throttled(_throttled_raw())
+    if not d["available"]:
+        # il firmware non espone get_throttled (container senza accesso, kernel diverso): almeno la sotto-tensione ora
+        uv = undervoltage_hwmon()
+        if uv is not None:
+            d = {"available": True, "partial": True, "raw": None, "flags": {"undervoltage": uv},
+                 "messages": ["Sotto-tensione in questo momento"] if uv else []}
     d["model"] = (_read("/proc/device-tree/model") or platform.machine())
+    d["fan"] = fan_info()
     d["freq_mhz"] = cpu_freq_mhz()
-    fmax = _read("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
+    fmax = _read(f"{SYS}/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
     d["freq_max_mhz"] = round(int(fmax) / 1000) if fmax and fmax.isdigit() else None
     return d
 

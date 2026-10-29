@@ -3,7 +3,7 @@ import json
 import sqlite3
 import threading
 import time
-from typing import Any, Iterable
+from typing import Any
 
 from . import config
 
@@ -13,6 +13,7 @@ METRIC_COLS = [
 ]
 
 CHECK_RETENTION_DAYS = 7
+INCIDENT_RETENTION_DAYS = 90
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -34,7 +35,16 @@ def _create(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS check_results (
             check_id INTEGER NOT NULL, ts INTEGER NOT NULL, ok INTEGER NOT NULL, ms REAL, err TEXT,
             PRIMARY KEY (check_id, ts));
+        CREATE TABLE IF NOT EXISTS incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, check_id INTEGER NOT NULL,
+            start INTEGER NOT NULL, end INTEGER, err TEXT);
+        CREATE INDEX IF NOT EXISTS idx_incidents_check ON incidents(check_id, start);
     """)
+    # migrazione: opzioni dei controlli (metodo, parola chiave, JSON, timeout, ...)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(checks)")}
+    if "opts" not in cols:
+        conn.execute("ALTER TABLE checks ADD COLUMN opts TEXT NOT NULL DEFAULT '{}'")
+    conn.commit()
 
 
 def init(path=None) -> None:
@@ -84,6 +94,7 @@ def prune(now: int | None = None) -> None:
         c.execute("DELETE FROM metrics_1m WHERE ts < ?", (now - config.RETENTION_DAYS * 86400,))
         c.execute("DELETE FROM events WHERE ts < ?", (now - config.RETENTION_DAYS * 86400,))
         c.execute("DELETE FROM check_results WHERE ts < ?", (now - CHECK_RETENTION_DAYS * 86400,))
+        c.execute("DELETE FROM incidents WHERE end IS NOT NULL AND end < ?", (now - INCIDENT_RETENTION_DAYS * 86400,))
         c.commit()
 
 
@@ -169,18 +180,86 @@ def stats() -> dict[str, int]:
 
 
 # ---------------------------------------------------------------- controlli di raggiungibilità
-def add_check(name: str, kind: str, target: str, interval: int) -> int:
+def _check_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["opts"] = json.loads(d.get("opts") or "{}")
+    except ValueError:
+        d["opts"] = {}
+    return d
+
+
+def add_check(name: str, kind: str, target: str, interval: int, opts: dict | None = None) -> int:
     with _lock:
         c = _c()
-        cur = c.execute("INSERT INTO checks (name, kind, target, interval) VALUES (?,?,?,?)",
-                        (name, kind, target, interval))
+        cur = c.execute("INSERT INTO checks (name, kind, target, interval, opts) VALUES (?,?,?,?,?)",
+                        (name, kind, target, interval, json.dumps(opts or {})))
         c.commit()
         return int(cur.lastrowid)
 
 
+def update_check(check_id: int, name: str, kind: str, target: str, interval: int, opts: dict) -> bool:
+    with _lock:
+        c = _c()
+        cur = c.execute("UPDATE checks SET name=?, kind=?, target=?, interval=?, opts=? WHERE id=?",
+                        (name, kind, target, interval, json.dumps(opts), check_id))
+        c.commit()
+        return cur.rowcount > 0
+
+
 def list_checks() -> list[dict]:
     with _lock:
-        return [dict(r) for r in _c().execute("SELECT * FROM checks ORDER BY id").fetchall()]
+        return [_check_row(r) for r in _c().execute("SELECT * FROM checks ORDER BY id").fetchall()]
+
+
+def open_incident(check_id: int, start: int, err: str | None) -> int:
+    with _lock:
+        c = _c()
+        cur = c.execute("INSERT INTO incidents (check_id, start, err) VALUES (?,?,?)", (check_id, start, err))
+        c.commit()
+        return int(cur.lastrowid)
+
+
+def open_incident_id(check_id: int) -> int | None:
+    with _lock:
+        r = _c().execute("SELECT id FROM incidents WHERE check_id=? AND end IS NULL ORDER BY id DESC LIMIT 1",
+                         (check_id,)).fetchone()
+    return r["id"] if r else None
+
+
+def close_incident(check_id: int, end: int) -> int | None:
+    """Chiude l'incidente aperto; ritorna la durata in secondi."""
+    with _lock:
+        c = _c()
+        r = c.execute("SELECT id, start FROM incidents WHERE check_id=? AND end IS NULL ORDER BY id DESC LIMIT 1",
+                      (check_id,)).fetchone()
+        if not r:
+            return None
+        c.execute("UPDATE incidents SET end=? WHERE check_id=? AND end IS NULL", (end, check_id))
+        c.commit()
+        return max(0, end - r["start"])
+
+
+def incidents(check_id: int, limit: int = 20) -> list[dict]:
+    with _lock:
+        rows = _c().execute("SELECT start, end, err FROM incidents WHERE check_id=? ORDER BY start DESC LIMIT ?",
+                            (check_id, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def check_latency(check_id: int, since: int) -> list[dict]:
+    with _lock:
+        rows = _c().execute("SELECT ts, ok, ms FROM check_results WHERE check_id=? AND ts>=? ORDER BY ts",
+                            (check_id, since)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def check_stats(check_id: int, since: int) -> dict:
+    with _lock:
+        r = _c().execute("SELECT AVG(ms) AS avg, MIN(ms) AS mn, MAX(ms) AS mx FROM check_results "
+                         "WHERE check_id=? AND ts>=? AND ok=1 AND ms IS NOT NULL", (check_id, since)).fetchone()
+    return {"avg": None if r["avg"] is None else round(r["avg"], 1),
+            "min": r["mn"], "max": r["mx"]}
 
 
 def delete_check(check_id: int) -> bool:
@@ -188,6 +267,7 @@ def delete_check(check_id: int) -> bool:
         c = _c()
         cur = c.execute("DELETE FROM checks WHERE id=?", (check_id,))
         c.execute("DELETE FROM check_results WHERE check_id=?", (check_id,))
+        c.execute("DELETE FROM incidents WHERE check_id=?", (check_id,))
         c.commit()
         return cur.rowcount > 0
 

@@ -1,8 +1,7 @@
 """Accesso limitato a Tailscale: scelta dell'indirizzo su cui ascoltare e filtro dei client."""
 import ipaddress
-import sys
 import time
-from typing import Callable, Iterable
+from typing import Callable
 
 import psutil
 

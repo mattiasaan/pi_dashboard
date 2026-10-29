@@ -12,7 +12,7 @@ DEFAULTS = {
     "cpu_high": 90, "cpu_secs": 120,
     "mem_high": 90, "disk_high": 90,
     "power_alerts": True, "container_alerts": True, "monitor_alerts": True,
-    "telegram": True,
+    "telegram": True, "webhook": True,
 }
 LIMITS = {
     "temp_warn": (40, 100), "temp_crit": (40, 110), "cpu_high": (10, 100), "cpu_secs": (10, 3600),
@@ -55,11 +55,34 @@ def send_telegram(text: str) -> None:
     threading.Thread(target=_go, daemon=True).start()
 
 
+def webhook_enabled() -> bool:
+    return bool(config.WEBHOOK_URL)
+
+
+def send_webhook(level: str, kind: str, message: str, ts: int) -> None:
+    def _go():
+        try:
+            if config.WEBHOOK_FORMAT == "text":      # ntfy e simili: corpo semplice
+                prio = {"crit": "urgent", "warn": "high"}.get(level, "default")
+                httpx.post(config.WEBHOOK_URL, content=message.encode("utf-8"), timeout=8,
+                           headers={"Title": "Raspberry", "Priority": prio})
+            else:
+                httpx.post(config.WEBHOOK_URL, timeout=8, json={
+                    "level": level, "kind": kind, "message": message, "ts": ts,
+                    "text": f"Raspberry: {message}", "content": f"Raspberry: {message}"})
+        except httpx.HTTPError:
+            pass
+    threading.Thread(target=_go, daemon=True).start()
+
+
 def notify(level: str, kind: str, message: str, ts: int | None = None) -> None:
     db.add_event(level, kind, message, ts)
     if level in ("warn", "crit") and telegram_enabled() and load_settings().get("telegram"):
         icon = "🔴" if level == "crit" else "🟠"
         send_telegram(f"{icon} Raspberry: {message}")
+    # il webhook riceve anche i rientri (info) di avvisi e monitor, così sai quando è tornato tutto a posto
+    if webhook_enabled() and load_settings().get("webhook") and (level in ("warn", "crit") or kind in ("monitor", "alert")):
+        send_webhook(level, kind, message, ts or int(time.time()))
 
 
 class AlertEngine:

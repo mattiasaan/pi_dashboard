@@ -1,4 +1,3 @@
-import logging
 import os
 import tempfile
 import time
@@ -11,9 +10,9 @@ from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import alerts, auth, config, db, docker_api, netguard, system
+from . import __version__, alerts, auth, config, db, docker_api, netguard, system
 from .collector import collector
-from .monitor import MAX_CHECKS, monitor, validate_check
+from .monitor import MAX_CHECKS, monitor, validate_check, validate_options
 
 STATIC = Path(__file__).parent / "static"
 RANGES = {"15m": 900, "1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
@@ -46,12 +45,20 @@ async def only_allowed_networks(request: Request, call_next):
     return await call_next(request)
 
 
+# Solo risorse della dashboard stessa: nessuno script o font esterno, nessun frame.
+# Gli stili inline servono perché le barre e i grafici impostano larghezze e colori dal codice.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+       "font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; "
+       "form-action 'self'; frame-ancestors 'none'")
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     resp = await call_next(request)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "same-origin")
+    resp.headers.setdefault("Content-Security-Policy", CSP)
     if request.url.path.startswith("/api/"):
         resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -117,7 +124,7 @@ def history(range: str = "1h"):
 
 @app.get("/api/system", dependencies=api_dep)
 def system_info():
-    return {**system.system_info(), "disks": system.disk_partitions(), "pi": collector.pi or system.pi_status(),
+    return {**system.system_info(), "version": __version__, "disks": system.disk_partitions(), "pi": collector.pi or system.pi_status(),
             "db": db.stats(), "features": {"docker": config.DOCKER_ENABLED, "power": config.POWER_ENABLED,
                                            "telegram": alerts.telegram_enabled()},
             "retention_days": config.RETENTION_DAYS, "disk_forecast": db.disk_forecast()}
@@ -135,7 +142,7 @@ def process_detail(pid: int):
     try:
         return system.process_detail(pid)
     except psutil.NoSuchProcess:
-        raise HTTPException(404, "Processo non trovato")
+        raise HTTPException(404, "Processo non trovato") from None
 
 
 class SignalIn(BaseModel):
@@ -148,13 +155,13 @@ def process_signal(pid: int, body: SignalIn):
     try:
         name = system.signal_process(pid, body.signal.upper())
     except PermissionError as e:
-        raise HTTPException(403, str(e))
+        raise HTTPException(403, str(e)) from None
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     except psutil.NoSuchProcess:
-        raise HTTPException(404, "Processo non trovato")
+        raise HTTPException(404, "Processo non trovato") from None
     except psutil.AccessDenied:
-        raise HTTPException(403, "Permesso negato")
+        raise HTTPException(403, "Permesso negato") from None
     db.add_event("info", "process", f"Segnale {body.signal.upper()} inviato a {name} (PID {pid})")
     return {"ok": True, "name": name}
 
@@ -164,15 +171,15 @@ def _docker_guard(fn, *a, **kw):
     try:
         return fn(*a, **kw)
     except docker_api.DockerUnavailable as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from None
     except LookupError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from None
     except PermissionError as e:
-        raise HTTPException(403, str(e))
+        raise HTTPException(403, str(e)) from None
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     except RuntimeError as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, str(e)) from None
 
 
 @app.get("/api/containers", dependencies=api_dep)
@@ -246,7 +253,7 @@ def containers_bulk(body: BulkIn):
             real = docker_api.action(name, body.action)
             results.append({"name": real, "ok": True})
         except docker_api.DockerUnavailable as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except (LookupError, PermissionError, RuntimeError, ValueError) as e:
             collector.expected_stops.discard(name)
             results.append({"name": name, "ok": False, "error": str(e)})
@@ -270,7 +277,8 @@ class PruneIn(BaseModel):
 @app.post("/api/docker/prune", dependencies=api_dep)
 def docker_prune(body: PruneIn):
     r = _docker_guard(docker_api.prune, body.what)
-    db.add_event("info", "container", f"Pulizia Docker ({'immagini senza nome' if body.what == 'images' else 'cache di build'}): liberati {r['reclaimed']} byte")
+    what = "immagini senza nome" if body.what == "images" else "cache di build"
+    db.add_event("info", "container", f"Pulizia Docker ({what}): liberati {r['reclaimed']} byte")
     return r
 
 
@@ -287,7 +295,7 @@ def _check_out(c: dict, now: int) -> dict:
         ok = None
     return {**c, "enabled": bool(c["enabled"]), "ok": ok,
             "ms": st.get("ms", last.get("ms")), "err": st.get("err", last.get("err")),
-            "last": st.get("ts", last.get("ts")), "down": bool(st.get("down")),
+            "last": st.get("ts", last.get("ts")), "down": bool(st.get("down")), "cert_days": st.get("cert_days"),
             "uptime24h": db.check_uptime(c["id"], now - 86400), "uptime7d": db.check_uptime(c["id"], now - 7 * 86400),
             "history": [{"ts": r["ts"], "ok": bool(r["ok"]), "ms": r["ms"]} for r in hist]}
 
@@ -303,19 +311,49 @@ class CheckIn(BaseModel):
     kind: str
     target: str
     interval: int = 60
+    options: dict = {}
+
+
+def _validated(body: CheckIn):
+    try:
+        name, kind, target, interval = validate_check(body.name, body.kind, body.target, body.interval)
+        return name, kind, target, interval, validate_options(kind, body.options)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
 
 
 @app.post("/api/checks", dependencies=api_dep)
 def checks_add(body: CheckIn):
     if len(db.list_checks()) >= MAX_CHECKS:
         raise HTTPException(400, f"Massimo {MAX_CHECKS} controlli")
-    try:
-        name, kind, target, interval = validate_check(body.name, body.kind, body.target, body.interval)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    cid = db.add_check(name, kind, target, interval)
+    name, kind, target, interval, opts = _validated(body)
+    cid = db.add_check(name, kind, target, interval, opts)
     monitor.run_now(cid)
     return {"id": cid}
+
+
+@app.put("/api/checks/{check_id}", dependencies=api_dep)
+def checks_update(check_id: int, body: CheckIn):
+    name, kind, target, interval, opts = _validated(body)
+    if not db.update_check(check_id, name, kind, target, interval, opts):
+        raise HTTPException(404, "Controllo non trovato")
+    monitor.forget(check_id)
+    monitor.run_now(check_id)
+    return {"ok": True}
+
+
+@app.get("/api/checks/{check_id}", dependencies=api_dep)
+def checks_detail(check_id: int, hours: int = 24):
+    c = next((c for c in db.list_checks() if c["id"] == check_id), None)
+    if not c:
+        raise HTTPException(404, "Controllo non trovato")
+    now = int(time.time())
+    hours = min(max(hours, 1), 24 * 7)
+    pts = db.check_latency(check_id, now - hours * 3600)
+    step = max(1, len(pts) // 600)                      # al massimo ~600 punti nel grafico
+    return {**_check_out(c, now), "points": [[p["ts"], p["ok"], p["ms"]] for p in pts[::step]],
+            "incidents": db.incidents(check_id, 15), "stats": db.check_stats(check_id, now - hours * 3600),
+            "hours": hours}
 
 
 @app.delete("/api/checks/{check_id}", dependencies=api_dep)
@@ -343,6 +381,31 @@ def checks_run(check_id: int):
         raise HTTPException(404, "Controllo non trovato")
     monitor.run_now(check_id)
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ pagina di stato (opzionale)
+@app.get("/api/status", include_in_schema=False)
+def public_status():
+    if not config.STATUS_PAGE:
+        raise HTTPException(404, "Pagina di stato non attiva")
+    now = int(time.time())
+    items = []
+    for c in db.list_checks():
+        if not c["enabled"] or not c["opts"].get("public"):
+            continue
+        o = _check_out(c, now)
+        items.append({"name": c["name"], "ok": o["ok"], "ms": o["ms"], "uptime24h": o["uptime24h"],
+                      "uptime7d": o["uptime7d"], "last": o["last"],
+                      "history": [{"ts": h["ts"], "ok": h["ok"]} for h in o["history"][-40:]]})
+    return {"title": config.STATUS_TITLE, "checks": items,
+            "all_ok": bool(items) and all(i["ok"] for i in items), "now": now}
+
+
+@app.get("/status", include_in_schema=False)
+def status_page():
+    if not config.STATUS_PAGE:
+        raise HTTPException(404, "Pagina di stato non attiva")
+    return FileResponse(STATIC / "status.html")
 
 
 # ------------------------------------------------------------------ backup database
@@ -380,7 +443,8 @@ def power(body: PowerIn):
 # ------------------------------------------------------------------ impostazioni / eventi
 @app.get("/api/settings", dependencies=api_dep)
 def get_settings():
-    return {"alerts": alerts.load_settings(), "telegram_configured": alerts.telegram_enabled()}
+    return {"alerts": alerts.load_settings(), "telegram_configured": alerts.telegram_enabled(),
+            "webhook_configured": alerts.webhook_enabled()}
 
 
 @app.put("/api/settings", dependencies=api_dep)
@@ -388,12 +452,20 @@ def put_settings(body: dict):
     try:
         clean = alerts.validate_settings(body)
     except (ValueError, TypeError) as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     merged = {**alerts.load_settings(), **clean}
     if merged["temp_warn"] >= merged["temp_crit"]:
         raise HTTPException(400, "La soglia di avviso deve essere minore di quella critica")
     db.set_setting("alerts", merged)
     return {"alerts": merged}
+
+
+@app.post("/api/settings/test-webhook", dependencies=api_dep)
+def test_webhook():
+    if not alerts.webhook_enabled():
+        raise HTTPException(400, "Webhook non configurato")
+    alerts.send_webhook("info", "alert", "Messaggio di prova dalla dashboard del Raspberry", int(time.time()))
+    return {"ok": True}
 
 
 @app.post("/api/settings/test-telegram", dependencies=api_dep)

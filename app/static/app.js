@@ -664,11 +664,15 @@ function openLogs(name) {
 }
 
 // ------------------------------------------------------------------ monitor di raggiungibilità
-const CHK = { data: [], loaded: false };
+const CHK = { data: [], loaded: false, edit: null, detailId: null, range: 24 };
 const PRESETS = [
+  { n: 'Health endpoint', k: 'health', t: 'https://esempio.it/health' }, { n: 'Sito web', k: 'http', t: 'https://example.com' },
   { n: 'Internet', k: 'tcp', t: '1.1.1.1:443' }, { n: 'DNS Google', k: 'tcp', t: '8.8.8.8:53' },
-  { n: 'Router', k: 'tcp', t: '192.168.1.1:80' }, { n: 'Sito web', k: 'http', t: 'https://example.com' },
+  { n: 'Router', k: 'tcp', t: '192.168.1.1:80' },
 ];
+const KIND_LABEL = { tcp: 'Porta TCP', http: 'Pagina web', health: 'Health endpoint' };
+const kindOf = (c) => (c.kind === 'tcp' ? 'tcp' : (c.opts && c.opts.json_path ? 'health' : 'http'));
+const everyText = (n) => (n >= 3600 ? `${n / 3600} h` : n >= 60 ? `${n / 60} min` : `${n} s`);
 
 function stripHTML(h) {
   const last = h.slice(-40), maxMs = Math.max(50, ...last.filter((r) => r.ms != null).map((r) => r.ms));
@@ -678,27 +682,39 @@ function stripHTML(h) {
   return `<div class="strip" aria-hidden="true">${cells.join('')}</div>`;
 }
 
+function certTag(c) {
+  if (c.cert_days == null) return '';
+  const warn = c.opts && c.opts.ssl_warn_days && c.cert_days <= c.opts.ssl_warn_days;
+  return `<span class="tag${warn ? ' warn' : ''}">${c.cert_days < 0 ? 'Certificato scaduto' : `Certificato: ${c.cert_days} giorni`}</span>`;
+}
+
 function renderChecks() {
   const l = CHK.data;
   const bad = l.filter((c) => c.enabled && c.ok === false).length;
   for (const el of [$('#nav-mon'), $('#more-mon')]) { el.textContent = bad ? `${bad} giù` : ''; el.classList.toggle('bad', bad > 0); }
   $('#tb-mon').hidden = !bad;
+  if ($('#dlg-chk').open) renderCheckDetail();
   if (S.tab !== 'monitor') return;
   if (!l.length) {
     $('#chk-list').innerHTML = `<div class="panel" style="grid-column:1/-1"><h2>Nessun controllo</h2>
-      <p class="muted">Aggiungi un controllo per sapere subito se Internet, il router o un tuo servizio smettono di rispondere. Per cominciare:</p>
+      <p class="muted">Aggiungi un controllo per sapere subito se un sito, una tua API (con il suo health endpoint), il router o Internet smettono di rispondere. Per cominciare:</p>
       <div class="chips">${PRESETS.map((p, i) => `<button class="chip" data-preset="${i}" type="button">${esc(p.n)}</button>`).join('')}</div></div>`;
     return;
   }
-  $('#chk-list').innerHTML = l.map((c) => `<article class="panel chk">
-    <div class="top"><div><div class="nm">${esc(c.name)}</div><div class="tg">${esc(c.target)}</div><div class="tg2">${c.kind === 'http' ? 'Pagina web' : 'Porta TCP'}, ogni ${c.interval >= 60 ? c.interval / 60 + ' min' : c.interval + ' s'}</div></div>${chkStatus(c)}</div>
+  const up = l.filter((c) => c.enabled && c.ok === true).length, on = l.filter((c) => c.enabled).length;
+  const head = `<div class="panel" style="grid-column:1/-1;padding:12px 16px">${bad
+    ? status('crit', `${bad} ${bad === 1 ? 'servizio non risponde' : 'servizi non rispondono'}`)
+    : status('good', on ? 'Tutto raggiungibile' : 'Nessun controllo attivo')} <span class="muted" style="margin-left:8px">${up} su ${on} attivi raggiungibili</span></div>`;
+  $('#chk-list').innerHTML = head + l.map((c) => `<article class="panel chk">
+    <div class="top"><div><button type="button" class="nm lnk" data-chk-open="${c.id}">${esc(c.name)}</button><div class="tg">${esc(c.target)}</div><div class="tg2">${KIND_LABEL[kindOf(c)]}, ogni ${everyText(c.interval)}</div></div>${chkStatus(c)}</div>
     <div class="vals"><div><b>${c.ok && c.ms != null ? n0.format(c.ms) + ' ms' : '-'}</b><span>Risposta</span></div>
       <div><b>${c.uptime24h == null ? '-' : n1.format(c.uptime24h) + '%'}</b><span>Raggiungibile (24 ore)</span></div>
       <div><b>${c.uptime7d == null ? '-' : n1.format(c.uptime7d) + '%'}</b><span>Raggiungibile (7 giorni)</span></div></div>
     ${c.ok === false && c.err ? `<div class="muted">Ultimo errore: ${esc(c.err)}</div>` : ''}
     ${stripHTML(c.history)}
+    <div class="tags">${certTag(c)}${c.opts && c.opts.public ? '<span class="tag">Nella pagina di stato</span>' : ''}</div>
     <div class="muted" style="font-size:12px">Ultimo controllo: ${c.last ? ago(c.last) : 'mai'}</div>
-    <div class="acts"><button class="btn sm" data-chk-run="${c.id}">Controlla ora</button>
+    <div class="acts"><button class="btn sm" data-chk-open="${c.id}">Dettagli</button><button class="btn sm" data-chk-run="${c.id}">Controlla ora</button>
       <label class="switch"><input type="checkbox" data-chk-en="${c.id}" ${c.enabled ? 'checked' : ''}><span class="track"></span><span>Attivo</span></label>
       <span style="flex:1"></span><button class="btn sm danger" data-chk-del="${c.id}" data-n="${esc(c.name)}">Elimina</button></div>
   </article>`).join('');
@@ -709,23 +725,109 @@ async function loadChecks() {
   if (S.last && (S.tab === 'panoramica' || S.tab === 'schermo')) renderLive(S.last);
 }
 
-function openCheckForm(preset) {
-  $('#chk-form').reset(); $('#chk-err').textContent = '';
-  $('#chk-presets').innerHTML = PRESETS.map((p, i) => `<button class="chip" data-preset="${i}" type="button">${esc(p.n)}</button>`).join('');
-  if (preset) fillPreset(preset);
-  syncKind(); $('#dlg-check').showModal(); $('#chk-name').focus();
+// ---- dettaglio di un controllo
+let cdtChart = null;
+function renderCheckDetail() {
+  const c = CHK.data.find((x) => x.id === CHK.detailId);
+  if (!c) return;
+  $('#cdt-title').textContent = c.name;
+  $('#cdt-sub').innerHTML = `${esc(c.target)}<br>${KIND_LABEL[kindOf(c)]}, ogni ${everyText(c.interval)} ${chkStatus(c)}`;
+  $('#cdt-vals').innerHTML = `<div><b>${c.ok && c.ms != null ? n0.format(c.ms) + ' ms' : '-'}</b><span>Ora</span></div>
+    <div><b>${c.uptime24h == null ? '-' : n1.format(c.uptime24h) + '%'}</b><span>24 ore</span></div>
+    <div><b>${c.uptime7d == null ? '-' : n1.format(c.uptime7d) + '%'}</b><span>7 giorni</span></div>
+    ${c.cert_days != null ? `<div><b>${c.cert_days} giorni</b><span>Scadenza certificato</span></div>` : ''}`;
+}
+async function loadCheckDetail() {
+  if (CHK.detailId == null) return;
+  let d;
+  try { d = await api(`/api/checks/${CHK.detailId}?hours=${CHK.range}`); } catch (e) { toast(e.message, true); return; }
+  if (!cdtChart) {
+    cdtChart = makeChart($('#cdt-chart'), { series: [{ label: 'Risposta', color: C.s1, fill: true }], yFmt: (v) => `${n0.format(v)} ms`,
+      xFmt: (v) => (CHK.range <= 24 ? hhmm(v) : fmtTime(v).replace(',', '')), tipTitle: (v) => fmtTime(v, true) });
+  }
+  const now = Date.now() / 1000, step = Math.max(60, d.points.length > 1 ? (d.points[1][0] - d.points[0][0]) : 60);
+  const pts = [];
+  d.points.forEach(([t, ok, ms], i) => {
+    if (i && t - d.points[i - 1][0] > step * 3) pts.push({ x: d.points[i - 1][0] + step, y: null });
+    pts.push({ x: t, y: ok ? ms : null });
+  });
+  cdtChart.data.datasets[0].data = pts;
+  cdtChart.data.datasets[0].pointRadius = pts.length < 4 ? 3 : 0;
+  cdtChart.options.scales.x.min = now - d.hours * 3600; cdtChart.options.scales.x.max = now;
+  cdtChart.update('none');
+  const st = d.stats;
+  $('#cdt-vals').insertAdjacentHTML('beforeend', st.avg == null ? '' : `<div><b>${n0.format(st.avg)} ms</b><span>Media (${CHK.range === 1 ? '1 ora' : CHK.range === 24 ? '24 ore' : '7 giorni'})</span></div><div><b>${n0.format(st.min)} / ${n0.format(st.max)} ms</b><span>Minimo / massimo</span></div>`);
+  $('#cdt-inc').innerHTML = d.incidents.length ? d.incidents.map((i) => `<div class="inc"><span>${status(i.end ? 'warn' : 'crit', i.end ? 'Risolta' : 'In corso')} <span class="muted">${esc(i.err || '')}</span></span>
+    <span class="muted">${fmtTime(i.start)}, ${i.end ? 'durata ' + dur(i.end - i.start) : 'da ' + dur(now - i.start)}</span></div>`).join('')
+    : '<div class="muted">Nessuna interruzione registrata.</div>';
+}
+function openCheckDetail(id) {
+  CHK.detailId = id; CHK.range = 24;
+  for (const b of $$('#cdt-range button')) b.classList.toggle('on', +b.dataset.h === 24);
+  renderCheckDetail(); $('#dlg-chk').showModal(); loadCheckDetail();
+}
+
+// ---- modulo di creazione e modifica
+function syncKind() {
+  const k = $('#chk-kind').value;
+  $('#chk-target-l').textContent = k === 'tcp' ? 'Indirizzo e porta' : k === 'health' ? "Indirizzo dell'health endpoint" : 'Indirizzo della pagina';
+  $('#chk-target').placeholder = k === 'tcp' ? '1.1.1.1:443' : k === 'health' ? 'https://api.esempio.it/health' : 'https://esempio.it';
+  $('#chk-hint').textContent = k === 'health'
+    ? 'Risulta attivo se risponde con un codice accettato e il campo JSON indicato vale ok, up o healthy (o il valore che scegli).'
+    : k === 'http' ? 'Risulta attivo se risponde con uno dei codici accettati (200-399 se non cambi nulla).' : '';
+  if (k === 'health' && !$('#chk-jpath').value) $('#chk-jpath').value = 'status';
+  for (const el of $$('#chk-form [data-for]')) el.hidden = !el.dataset.for.split(' ').includes(k);
 }
 function fillPreset(p) { $('#chk-name').value = p.n; $('#chk-kind').value = p.k; $('#chk-target').value = p.t; syncKind(); }
-function syncKind() {
-  const http = $('#chk-kind').value === 'http';
-  $('#chk-target-l').textContent = http ? 'Indirizzo della pagina' : 'Indirizzo e porta';
-  $('#chk-target').placeholder = http ? 'https://esempio.it' : '1.1.1.1:443';
+function parseHeaders(txt) {
+  const h = {};
+  for (const line of txt.split('\n')) {
+    const i = line.indexOf(':'); if (!line.trim()) continue;
+    if (i < 1) throw new Error('Intestazione non valida: usa «Nome: valore»');
+    h[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return h;
+}
+function openCheckForm(preset, check) {
+  $('#chk-form').reset(); $('#chk-err').textContent = ''; CHK.edit = check ? check.id : null;
+  $('#chk-title').textContent = check ? 'Modifica controllo' : 'Nuovo controllo';
+  $('#chk-submit').textContent = check ? 'Salva' : 'Aggiungi';
+  $('#chk-presets').hidden = !!check;
+  $('#chk-presets').innerHTML = PRESETS.map((p, i) => `<button class="chip" data-preset="${i}" type="button">${esc(p.n)}</button>`).join('');
+  $('#chk-adv').open = false;
+  if (check) {
+    const o = check.opts || {};
+    $('#chk-name').value = check.name; $('#chk-kind').value = kindOf(check); $('#chk-target').value = check.target;
+    $('#chk-int').value = String(check.interval);
+    if (![...$('#chk-int').options].some((x) => x.value === String(check.interval))) $('#chk-int').add(new Option(`${check.interval} secondi`, check.interval, true, true));
+    $('#chk-jpath').value = o.json_path || ''; $('#chk-jeq').value = o.json_equals || ''; $('#chk-kw').value = o.keyword || '';
+    $('#chk-status').value = o.expect_status || '200-499'; $('#chk-method').value = o.method || 'GET';
+    $('#chk-timeout').value = o.timeout || 5; $('#chk-retries').value = o.retries || 2; $('#chk-cert').value = o.ssl_warn_days ?? 0;
+    $('#chk-headers').value = Object.entries(o.headers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+    $('#chk-tls').checked = o.verify_tls !== false; $('#chk-public').checked = !!o.public;
+  } else if (preset) fillPreset(preset);
+  syncKind(); $('#dlg-check').showModal(); $('#chk-name').focus();
+}
+function collectCheck() {
+  const k = $('#chk-kind').value, kind = k === 'tcp' ? 'tcp' : 'http';
+  const options = { timeout: Number($('#chk-timeout').value), retries: Number($('#chk-retries').value), public: $('#chk-public').checked };
+  if (kind === 'http') {
+    Object.assign(options, { method: $('#chk-method').value, expect_status: $('#chk-status').value.trim(), headers: parseHeaders($('#chk-headers').value),
+      verify_tls: $('#chk-tls').checked, ssl_warn_days: Number($('#chk-cert').value || 0) });
+    if (k === 'health') Object.assign(options, { json_path: $('#chk-jpath').value.trim(), json_equals: $('#chk-jeq').value.trim(), method: 'GET' });
+    else options.keyword = $('#chk-kw').value;
+  }
+  return { name: $('#chk-name').value, kind, target: $('#chk-target').value, interval: Number($('#chk-int').value), options };
 }
 async function submitCheck(e) {
   e.preventDefault(); $('#chk-err').textContent = '';
   try {
-    await api('/api/checks', { method: 'POST', body: { name: $('#chk-name').value, kind: $('#chk-kind').value, target: $('#chk-target').value, interval: Number($('#chk-int').value) } });
-    $('#dlg-check').close(); toast('Controllo aggiunto'); await loadChecks();
+    const body = collectCheck();
+    if (body.kind === 'http' && $('#chk-kind').value === 'health' && !body.options.json_path) throw new Error('Indica il campo JSON da controllare (per esempio status)');
+    if (CHK.edit != null) await api(`/api/checks/${CHK.edit}`, { method: 'PUT', body });
+    else await api('/api/checks', { method: 'POST', body });
+    $('#dlg-check').close(); toast(CHK.edit != null ? 'Controllo salvato' : 'Controllo aggiunto'); await loadChecks();
+    if ($('#dlg-chk').open) loadCheckDetail();
   } catch (err) { $('#chk-err').textContent = err.message; }
 }
 
@@ -737,19 +839,25 @@ const ALERT_FIELDS = [
 ];
 const ALERT_FLAGS = [
   ['power_alerts', 'Avvisa su sotto-tensione e throttling'], ['container_alerts', 'Avvisa se un container si ferma'],
-  ['monitor_alerts', 'Avvisa se un controllo del Monitor non risponde'], ['telegram', 'Invia gli avvisi anche su Telegram'],
+  ['monitor_alerts', 'Avvisa se un controllo del Monitor non risponde'], ['telegram', 'Invia gli avvisi anche su Telegram'], ['webhook', 'Invia gli avvisi anche al webhook'],
 ];
 
+function fanRow(pi) {
+  if (!pi.fan) return '';
+  const f = pi.fan;
+  return `<div class="row-line"><div class="top"><span>Ventola</span><span>${f.rpm ? `${n0.format(f.rpm)} giri/min` : status('good', 'Ferma')}${f.percent != null ? ` <span class="muted">${f.percent}%</span>` : ''}</span></div>${f.percent != null ? `<div class="bar"><span style="width:${f.percent}%;background:var(--s1)"></span></div>` : ''}</div>`;
+}
 function piRows(pi) {
   if (!pi.available) {
-    return `<div class="muted">Stato di alimentazione non disponibile: il kernel non espone <code>get_throttled</code> su questo dispositivo.</div>${freqRow(pi)}`;
+    return `<div class="muted">Stato di alimentazione non disponibile: il kernel non espone <code>get_throttled</code> su questo dispositivo.</div>${freqRow(pi)}${fanRow(pi)}`;
   }
   const f = pi.flags, line = (label, st) => `<div class="row-line"><div class="top"><span>${label}</span>${st}</div></div>`;
   const now = f.undervoltage ? status('crit', 'Sotto-tensione') : status('good', 'Regolare');
+  if (pi.partial) return line('Tensione ora', now) + '<div class="muted">Throttling e storico dall\'avvio non sono disponibili su questo dispositivo.</div>' + freqRow(pi) + fanRow(pi);
   const past = f.undervoltage_past ? status('warn', 'Rilevata dall\'avvio') : status('good', 'Mai rilevata');
   const thr = f.throttled || f.freq_capped ? status('warn', 'Attivo') : status('good', 'Assente');
   const thrPast = f.throttled_past || f.freq_capped_past || f.temp_limit_past ? status('warn', 'Rilevato dall\'avvio') : status('good', 'Mai rilevato');
-  return line('Tensione ora', now) + line('Tensione dall\'avvio', past) + line('Throttling ora', thr) + line('Throttling dall\'avvio', thrPast) + freqRow(pi);
+  return line('Tensione ora', now) + line('Tensione dall\'avvio', past) + line('Throttling ora', thr) + line('Throttling dall\'avvio', thrPast) + freqRow(pi) + fanRow(pi);
 }
 function freqRow(pi) {
   if (!pi.freq_mhz) return '';
@@ -772,7 +880,7 @@ async function loadSystem() {
   $('#sys-info').innerHTML = `
     <dt>Modello</dt><dd>${esc(d.model)}</dd><dt>Nome host</dt><dd>${esc(d.hostname)}</dd><dt>Sistema</dt><dd>${esc(d.os)}</dd>
     <dt>Kernel</dt><dd>${esc(d.kernel)} (${esc(d.arch)})</dd><dt>Core</dt><dd>${d.cores}</dd><dt>Memoria</dt><dd>${bytes(d.mem_total)}</dd>
-    <dt>Ultimo avvio</dt><dd>${fmtTime(d.boot_time)}</dd>`;
+    <dt>Ultimo avvio</dt><dd>${fmtTime(d.boot_time)}</dd><dt>Versione dashboard</dt><dd>${esc(d.version)}</dd>`;
   $('#sys-pi').innerHTML = piRows(d.pi);
   $('#sys-disks').innerHTML = d.disks.map((x) => `<div class="row-line"><div class="top"><span>${esc(x.mount)} <span class="muted">${esc(x.device)}, ${esc(x.fstype)}</span></span><span>${bytes(x.used)} di ${bytes(x.total)}, ${n0.format(x.percent)}%</span></div>
     <div class="bar ${barCls(x.percent)}"><span style="width:${x.percent}%"></span></div></div>`).join('') || '<div class="muted">Nessun disco rilevato.</div>';
@@ -791,10 +899,11 @@ async function loadSystem() {
   if (!$('#alert-form').contains(document.activeElement)) {
     $('#alert-fields').innerHTML = ALERT_FIELDS.map(([k, l]) => `<div class="field"><label for="a-${k}">${l}</label><input type="number" inputmode="numeric" id="a-${k}" name="${k}" value="${a[k]}" step="1" required></div>`).join('')
       + `<div style="grid-column:1/-1">${ALERT_FLAGS.map(([k, l]) =>
-        `<label class="check switch"><input type="checkbox" name="${k}" ${a[k] ? 'checked' : ''} ${k === 'telegram' && !st.telegram_configured ? 'disabled' : ''}><span class="track"></span><span>${l}</span></label>`).join('')}</div>`;
+        `<label class="check switch"><input type="checkbox" name="${k}" ${a[k] ? 'checked' : ''} ${(k === 'telegram' && !st.telegram_configured) || (k === 'webhook' && !st.webhook_configured) ? 'disabled' : ''}><span class="track"></span><span>${l}</span></label>`).join('')}</div>`;
   }
   $('#tg-note').textContent = st.telegram_configured ? 'Telegram collegato' : 'Telegram non configurato';
   $('#tg-test').disabled = !st.telegram_configured;
+  $('#wh-test').hidden = !st.webhook_configured;
 }
 
 async function saveAlerts(e) {
@@ -902,8 +1011,18 @@ function bind() {
     const preset = PRESETS[+p.dataset.preset];
     if ($('#dlg-check').open) fillPreset(preset); else openCheckForm(preset);
   });
+  $('#cdt-close').onclick = () => $('#dlg-chk').close();
+  $('#dlg-chk').addEventListener('close', () => { if (cdtChart) { cdtChart.destroy(); cdtChart = null; } CHK.detailId = null; });
+  $('#cdt-range').onclick = (e) => {
+    const b = e.target.closest('button[data-h]'); if (!b) return;
+    CHK.range = +b.dataset.h; for (const x of $$('#cdt-range button')) x.classList.toggle('on', x === b);
+    renderCheckDetail(); loadCheckDetail();
+  };
+  $('#cdt-edit').onclick = () => { const c = CHK.data.find((x) => x.id === CHK.detailId); if (c) openCheckForm(null, c); };
+  $('#cdt-run').onclick = async () => { const b = $('#cdt-run'); b.disabled = true; await api(`/api/checks/${CHK.detailId}/run`, { method: 'POST' }).catch((x) => toast(x.message, true)); b.disabled = false; await loadChecks(); loadCheckDetail(); };
   $('#chk-list').onclick = async (e) => {
-    const run = e.target.closest('[data-chk-run]'), del = e.target.closest('[data-chk-del]');
+    const run = e.target.closest('[data-chk-run]'), del = e.target.closest('[data-chk-del]'), open = e.target.closest('[data-chk-open]');
+    if (open) openCheckDetail(+open.dataset.chkOpen);
     if (run) { run.disabled = true; await api(`/api/checks/${run.dataset.chkRun}/run`, { method: 'POST' }).catch((x) => toast(x.message, true)); loadChecks(); }
     if (del) {
       const ok = await confirmDialog({ title: `Eliminare «${del.dataset.n}»?`, text: 'Il controllo e il suo storico verranno cancellati.', danger: true, okLabel: 'Elimina' });
@@ -916,6 +1035,7 @@ function bind() {
   };
 
   $('#alert-form').onsubmit = saveAlerts;
+  $('#wh-test').onclick = () => api('/api/settings/test-webhook', { method: 'POST' }).then(() => toast('Messaggio inviato')).catch((e) => toast(e.message, true));
   $('#tg-test').onclick = () => api('/api/settings/test-telegram', { method: 'POST' }).then(() => toast('Messaggio inviato')).catch((e) => toast(e.message, true));
   $('#btn-reboot').onclick = () => power('reboot'); $('#btn-shutdown').onclick = () => power('shutdown');
   $('#dk-calc').onclick = loadDockerUsage;

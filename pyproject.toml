@@ -1,0 +1,27 @@
+[project]
+name = "pi-dashboard"
+version = "1.0.0"
+description = "Dashboard web per Raspberry Pi: metriche, container Docker, monitor di raggiungibilità"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+extend-exclude = ["app/static/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+  "E701", "E702", "E731",   # righe brevi con ; e lambda: scelta di stile nei test
+  "B905",                   # zip() senza strict: le liste hanno sempre la stessa lunghezza
+  "B008",                   # Depends() come argomento predefinito è il modo di FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F811", "E402", "E501"]   # le fixture si importano e si ridichiarano come argomenti

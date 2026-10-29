@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark">
+<title>Stato dei servizi</title>
+<link rel="icon" href="/static/icons/icon-192.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { padding: 28px 16px calc(28px + var(--safe-b)); }
+  main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  .sbanner { padding: 14px 16px; border-radius: var(--r-panel); border: 1px solid var(--border); background: var(--surface); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 500; }
+  .svc { display: grid; gap: 8px; }
+  .svc .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .svc .nm { font-weight: 600; word-break: break-word; }
+  .svc .meta { color: var(--muted); font-size: 12.5px; }
+  .strip { display: flex; gap: 2px; height: 22px; }
+  .strip i { flex: 1; min-width: 2px; border-radius: 1.5px; background: var(--s3); }
+  .strip i.bad { background: var(--crit); }
+  .strip i.none { background: var(--raised); }
+  .foot { color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Stato dei servizi</h1>
+  <div class="sbanner" id="sbn" role="status">Caricamento…</div>
+  <div id="list" class="svc"></div>
+  <div class="foot" id="foot"></div>
+</main>
+<script src="/static/status.js"></script>
+</body>
+</html>

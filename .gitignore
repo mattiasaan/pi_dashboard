@@ -4,3 +4,11 @@ data/*
 !data/.gitkeep
 .env
 .pytest_cache/
+.venv/
+venv/
+*.db
+*.db-wal
+*.db-shm
+.secret
+.DS_Store
+.ruff_cache/

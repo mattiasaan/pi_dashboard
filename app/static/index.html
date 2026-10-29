@@ -153,7 +153,7 @@
     <!-- MONITOR -->
     <section class="tab" id="tab-monitor" hidden>
       <h1>Monitor</h1>
-      <p class="lead">Controlla che Internet, i tuoi servizi e gli altri dispositivi rispondano. Ricevi un avviso quando uno smette di rispondere.</p>
+      <p class="lead">Controlla che Internet, i tuoi siti, le tue API (health endpoint) e gli altri dispositivi rispondano. Ricevi un avviso quando uno smette di rispondere e quando torna a posto.</p>
       <div class="toolbar"><span class="grow"></span><button class="btn primary" id="chk-add" type="button">Aggiungi controllo</button></div>
       <div id="chk-list" class="grid g-cards"></div>
     </section>
@@ -175,6 +175,7 @@
             <div class="actions-row">
               <button class="btn primary" type="submit">Salva soglie</button>
               <button class="btn" type="button" id="tg-test">Invia prova Telegram</button>
+              <button class="btn" type="button" id="wh-test" hidden>Invia prova webhook</button>
             </div>
           </form>
         </div>
@@ -293,20 +294,49 @@
   <dl class="kv" id="cd-body"></dl>
 </dialog>
 
-<dialog id="dlg-check" class="sheet"><form id="chk-form" method="dialog">
-  <h2>Nuovo controllo</h2>
+<dialog id="dlg-check" class="sheet"><form id="chk-form" method="dialog" novalidate>
+  <h2 id="chk-title">Nuovo controllo</h2>
   <div class="chips" id="chk-presets" aria-label="Esempi"></div>
-  <div class="field"><label for="chk-name">Nome</label><input id="chk-name" type="text" maxlength="40" required placeholder="Es. Internet"></div>
+  <div class="field"><label for="chk-name">Nome</label><input id="chk-name" type="text" maxlength="40" required placeholder="Es. Il mio sito"></div>
   <div class="form-grid">
     <div class="field"><label for="chk-kind">Tipo</label>
-      <select id="chk-kind"><option value="tcp">Porta TCP (host:porta)</option><option value="http">Pagina web (http/https)</option></select></div>
+      <select id="chk-kind"><option value="health">Health endpoint (JSON)</option><option value="http">Pagina web (http/https)</option><option value="tcp">Porta TCP (host:porta)</option></select></div>
     <div class="field"><label for="chk-int">Ogni</label>
-      <select id="chk-int"><option value="30">30 secondi</option><option value="60" selected>1 minuto</option><option value="300">5 minuti</option><option value="900">15 minuti</option></select></div>
+      <select id="chk-int"><option value="15">15 secondi</option><option value="30">30 secondi</option><option value="60" selected>1 minuto</option><option value="120">2 minuti</option><option value="300">5 minuti</option><option value="900">15 minuti</option><option value="1800">30 minuti</option><option value="3600">1 ora</option></select></div>
   </div>
   <div class="field"><label for="chk-target" id="chk-target-l">Indirizzo</label><input id="chk-target" type="text" required placeholder="1.1.1.1:443" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+  <p class="muted hint" id="chk-hint"></p>
+  <details class="adv" id="chk-adv"><summary>Opzioni avanzate</summary>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="field" data-for="health"><label for="chk-jpath">Campo JSON da controllare</label><input id="chk-jpath" type="text" placeholder="status" autocapitalize="off" spellcheck="false"></div>
+      <div class="field" data-for="health"><label for="chk-jeq">Valore atteso</label><input id="chk-jeq" type="text" placeholder="vuoto = ok, up, healthy…" autocapitalize="off" spellcheck="false"></div>
+      <div class="field" data-for="http"><label for="chk-kw">La risposta deve contenere</label><input id="chk-kw" type="text" maxlength="100" placeholder="Facoltativo" autocapitalize="off" spellcheck="false"></div>
+      <div class="field" data-for="http health"><label for="chk-status">Codici HTTP accettati</label><input id="chk-status" type="text" value="200-399" placeholder="200-399" autocapitalize="off" spellcheck="false"></div>
+      <div class="field" data-for="http"><label for="chk-method">Metodo</label><select id="chk-method"><option>GET</option><option>HEAD</option></select></div>
+      <div class="field"><label for="chk-timeout">Timeout (secondi)</label><input id="chk-timeout" type="number" inputmode="numeric" min="1" max="30" value="10"></div>
+      <div class="field"><label for="chk-retries">Errori di fila prima dell'avviso</label><input id="chk-retries" type="number" inputmode="numeric" min="1" max="5" value="2"></div>
+      <div class="field" data-for="http health"><label for="chk-cert">Avviso scadenza certificato (giorni)</label><input id="chk-cert" type="number" inputmode="numeric" min="0" max="90" value="14"></div>
+    </div>
+    <div class="field" data-for="http health"><label for="chk-headers">Intestazioni (una per riga, «Nome: valore»)</label>
+      <textarea id="chk-headers" rows="3" placeholder="Authorization: Bearer ..." autocapitalize="off" spellcheck="false"></textarea></div>
+    <label class="switch" data-for="http health"><input type="checkbox" id="chk-tls" checked><span class="track"></span><span>Verifica il certificato HTTPS</span></label>
+    <label class="switch"><input type="checkbox" id="chk-public"><span class="track"></span><span>Mostra nella pagina di stato</span></label>
+  </details>
   <p class="err" id="chk-err" role="alert"></p>
-  <div class="actions"><button class="btn" value="cancel" type="button" id="chk-cancel">Annulla</button><button class="btn primary" type="submit">Aggiungi</button></div>
+  <div class="actions"><button class="btn" value="cancel" type="button" id="chk-cancel">Annulla</button><button class="btn primary" type="submit" id="chk-submit">Aggiungi</button></div>
 </form></dialog>
+
+<dialog id="dlg-chk" class="sheet wide">
+  <div class="dlg-head"><h2 id="cdt-title">Controllo</h2><button class="btn sm ghost" id="cdt-close" type="button">Chiudi</button></div>
+  <div class="muted" id="cdt-sub" style="word-break:break-all"></div>
+  <div class="chk"><div class="vals" id="cdt-vals" style="margin:14px 0"></div></div>
+  <div class="panel-head"><h2>Tempo di risposta</h2>
+    <div class="seg" id="cdt-range" role="group" aria-label="Intervallo"><button type="button" data-h="1">1 ora</button><button type="button" data-h="24" class="on">24 ore</button><button type="button" data-h="168">7 giorni</button></div></div>
+  <div class="chart-box"><canvas id="cdt-chart" role="img" aria-label="Tempo di risposta"></canvas></div>
+  <h2 style="margin-top:18px">Interruzioni</h2>
+  <div id="cdt-inc" class="rows"></div>
+  <div class="actions wrap"><button class="btn" id="cdt-edit" type="button">Modifica</button><button class="btn" id="cdt-run" type="button">Controlla ora</button></div>
+</dialog>
 
 <script src="/static/vendor/chart.umd.js"></script>
 <script src="/static/app.js"></script>

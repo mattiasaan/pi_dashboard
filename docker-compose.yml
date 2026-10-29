@@ -1,6 +1,8 @@
 services:
   pi-dashboard:
     build: .
+    # Per usare l'immagine pubblicata invece di costruirla (arm64, armv7, amd64), sostituisci la riga "build: ." con:
+    # image: ghcr.io/OWNER/pi-dashboard:latest   (e imposta SELF_IMAGE allo stesso nome)
     image: pi-dashboard:latest
     container_name: pi-dashboard
     restart: unless-stopped

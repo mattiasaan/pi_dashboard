@@ -66,15 +66,41 @@ def calc_mem(st: dict) -> tuple[int, int]:
         return 0, 0
 
 
+_prev_cpu: dict[str, tuple[float, int]] = {}   # id -> (istante, nanosecondi di CPU usati)
+_one_shot = True                                # lo si disattiva da solo con un Docker molto vecchio
+
+
+def _read_stats(c) -> dict:
+    """Una lettura delle statistiche. Con one_shot Docker risponde subito invece di aspettare un secondo
+    campione (circa 1-2 s per container): su un Pi 3 con molti container fa la differenza."""
+    global _one_shot
+    if _one_shot:
+        try:
+            return c.stats(stream=False, one_shot=True)
+        except Exception as e:
+            if e.__class__.__name__ != "InvalidVersion":
+                raise
+            _one_shot = False
+    return c.stats(stream=False)
+
+
 def _stats_for(c) -> dict:
     now = time.monotonic()
     hit = _stats_cache.get(c.id)
     if hit and now - hit[0] < 5:
         return hit[1]
     try:
-        st = c.stats(stream=False)
+        st = _read_stats(c)
         used, limit = calc_mem(st)
-        out = {"cpu": calc_cpu_percent(st), "mem_used": used, "mem_limit": limit}
+        cpu = calc_cpu_percent(st)              # daemon che includono già il campione precedente
+        total = st["cpu_stats"]["cpu_usage"]["total_usage"]
+        prev = _prev_cpu.get(c.id)
+        _prev_cpu[c.id] = (now, total)
+        if prev and now > prev[0] and total >= prev[1]:
+            cpu = round((total - prev[1]) / ((now - prev[0]) * 1e9) * 100, 1)   # % di un core, come docker stats
+        elif not cpu:
+            cpu = None if not prev else 0.0     # prima lettura: ancora nessun dato
+        out = {"cpu": cpu, "mem_used": used, "mem_limit": limit}
     except Exception:
         out = {"cpu": None, "mem_used": None, "mem_limit": None}
     _stats_cache[c.id] = (now, out)
@@ -100,6 +126,10 @@ def list_containers(with_stats: bool = True) -> list[dict]:
     except DockerException as e:
         raise DockerUnavailable(str(e)) from e
     running = [c for c in containers if c.status == "running"]
+    alive = {c.id for c in containers}          # niente memoria per i container ormai eliminati
+    for cache in (_stats_cache, _prev_cpu):
+        for gone in [k for k in cache if k not in alive]:
+            cache.pop(gone, None)
     stats = {}
     if with_stats and running:
         for c, s in zip(running, _pool.map(_stats_for, running)):
