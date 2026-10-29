@@ -8,7 +8,7 @@ from . import config, netguard
 try:
     host = netguard.resolve_bind(config.BIND_ADDRESS, config.TAILSCALE_INTERFACE, wait=config.BIND_WAIT_SECONDS)
 except (RuntimeError, ValueError) as e:
-    # Niente ripiego su 0.0.0.0: se Tailscale manca ci si ferma e Docker riprova (restart: unless-stopped).
+    # Con BIND_ADDRESS=tailscale niente ripiego su 0.0.0.0: se Tailscale manca ci si ferma e Docker riprova.
     print(f"[pi-dashboard] {e}", flush=True)
     sys.exit(1)
 

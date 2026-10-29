@@ -554,3 +554,13 @@ def test_security_headers_and_no_inline_scripts(client):
         html = (Path(__file__).resolve().parent.parent / "app/static" / page).read_text()
         assert not re.search(r"<script(?![^>]*\bsrc=)", html), f"{page}: script inline vietato dalla CSP"
         assert not re.search(r"\son(click|load|submit|change)=", html)
+
+
+def test_lan_client_is_accepted_and_internet_client_is_not_by_default():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    for ip, code in (("192.168.1.50", 200), ("10.0.0.7", 200), ("100.101.102.103", 200), ("8.8.8.8", 403), ("203.0.113.9", 403)):
+        with TestClient(app, client=(ip, 50000)) as c:
+            assert c.get("/api/health").status_code == code, ip
+    from app import config
+    assert config.BIND_ADDRESS == "all" or os.environ.get("BIND_ADDRESS")      # predefinito: tutte le interfacce

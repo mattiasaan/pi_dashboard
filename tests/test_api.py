@@ -134,15 +134,16 @@ def test_static_assets_served(client):
         assert r.status_code == 200 and len(r.content) > 500, p
 
 
-def test_non_tailscale_clients_are_rejected(monkeypatch):
+def test_internet_clients_are_rejected_lan_and_tailscale_are_not(monkeypatch):
     fake_docker.install(monkeypatch)
-    for ip in ("192.168.1.50", "10.0.0.7", "8.8.8.8", "fe80::1", "testclient"):
+    for ip in ("8.8.8.8", "203.0.113.9", "2001:db8::1", "testclient"):
         with TestClient(app, client=(ip, 5000)) as c:
             for path in ("/", "/login", "/api/health", "/static/app.js", "/api/live"):
                 r = c.get(path, follow_redirects=False)
                 assert r.status_code == 403, (ip, path, r.status_code)
             assert c.post("/api/login", json={"password": "segreta"}).status_code == 403
-            assert "Tailscale" in c.get("/").json()["detail"]
-    for ip in ("100.64.0.1", "100.127.255.254", "127.0.0.1", "::1", "fd7a:115c:a1e0::5", "::ffff:100.100.1.1"):
+            assert "non consentito" in c.get("/").json()["detail"]
+    for ip in ("100.64.0.1", "100.127.255.254", "127.0.0.1", "::1", "fd7a:115c:a1e0::5", "::ffff:100.100.1.1",
+               "192.168.1.50", "10.0.0.7", "172.20.0.3", "fe80::1"):
         with TestClient(app, client=(ip, 5000)) as c:
             assert c.get("/api/health").status_code == 200, ip

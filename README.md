@@ -1,6 +1,6 @@
 # Pi Dashboard
 
-A dark, minimal web dashboard for your Raspberry Pi, in a single Docker container. Live metrics, history stored in SQLite, Docker container control, process management and an uptime-robot style monitor for your own services. Reachable **only through Tailscale** by default, not from your LAN.
+A dark, minimal web dashboard for your Raspberry Pi, in a single Docker container. Live metrics, history stored in SQLite, Docker container control, process management and an uptime-robot style monitor for your own services. Reachable from your **local network and through Tailscale**, never from the Internet, and it can be restricted to Tailscale only.
 
 > Italiano: see [README.it.md](README.it.md). The interface itself is currently in Italian only (see [Known limits](#known-limits)).
 
@@ -51,20 +51,29 @@ docker compose up -d --build
 
 Or use the published image instead of building: in `docker-compose.yml` replace `build: .` with `image: ghcr.io/OWNER/pi-dashboard:latest` (arm64, armv7 and amd64) and run `docker compose up -d`. Keep `SELF_IMAGE` equal to that image name.
 
-With Tailscale on your phone or computer open `http://<tailscale-ip-of-the-pi>:8080` (`tailscale ip -4` on the Pi) or `http://<pi-name>:8080` with MagicDNS. From the LAN **without** Tailscale it does not answer: that is intended.
+With Tailscale on your phone or computer open `http://<tailscale-ip-of-the-pi>:8080` (`tailscale ip -4` on the Pi) or `http://<pi-name>:8080` with MagicDNS. From your local network just open `http://<lan-ip-of-the-pi>:8080` (for example `http://192.168.1.20:8080`, see `hostname -I`) or `http://raspberrypi.local:8080`, no Tailscale needed. Tailscale stays optional: it is what you use when you are away from home.
 
 If `DASH_PASSWORD` is empty or still an example value (`changeme`...), a random temporary password is generated and printed in the log (`docker compose logs pi-dashboard`). Set your own.
 
 Update: `git pull && docker compose up -d --build`. Your data in `./data` is kept.
 
-### Tailscale only
+### Who can connect
 
-Two independent layers:
+Two independent layers decide it:
 
-1. **Listen address.** With `BIND_ADDRESS=tailscale` (default) the server binds only to the `tailscale0` address (`100.x.y.z`). On the LAN the port does not exist.
-2. **Client filter.** Every request is rejected with 403 unless it comes from a Tailscale network or the Pi itself (`ALLOWED_NETWORKS`).
+1. **Listen address** (`BIND_ADDRESS`). `all` (default) listens on every interface, so both the LAN and Tailscale work. `tailscale` binds only to the `tailscale0` address (`100.x.y.z`), `127.0.0.1` only to the Pi itself.
+2. **Client filter** (`ALLOWED_NETWORKS`). Every request is rejected with 403 unless it comes from an allowed network. The default is `tailscale,lan,loopback`: Tailscale, private networks (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`, link-local) and the Pi itself. Public addresses are refused, so the dashboard still does not answer from the Internet even if your router forwards the port by mistake.
 
-If Tailscale is not up yet at boot, the dashboard waits up to 2 minutes for the interface, then exits (Docker restarts it). It never falls back to the LAN.
+| You want | `.env` |
+|---|---|
+| LAN and Tailscale (default) | nothing to set |
+| **Tailscale only** | `BIND_ADDRESS=tailscale` and `ALLOWED_NETWORKS=tailscale,loopback` |
+| Only one LAN | `ALLOWED_NETWORKS=192.168.1.0/24,loopback` (names and CIDR networks can be mixed) |
+| Tailscale only with HTTPS | `BIND_ADDRESS=127.0.0.1`, `COOKIE_SECURE=true`, then `tailscale serve` (below) |
+
+With `BIND_ADDRESS=tailscale`, if Tailscale is not up yet at boot the dashboard waits up to 2 minutes for the interface, then exits (Docker restarts it). It never falls back to the LAN.
+
+**Plain HTTP on the LAN is not encrypted.** Inside Tailscale the traffic is already encrypted by WireGuard, but on your LAN the password and the session cookie travel in clear text, so anyone on the same Wi-Fi could read them. Fine on a home network you trust, not on a shared or guest network: there, use Tailscale only, or HTTPS (below). Keep `COOKIE_SECURE=false` while you use plain HTTP, otherwise login does not work. Optionally also restrict the port with the firewall, for example `sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp`.
 
 **Optional HTTPS** (needed to install it as an app): Tailscale can put a valid certificate in front, still only inside your tailnet. First check what you already publish with `tailscale serve status`, because a second `serve` on the same port and path overwrites the first. Use a different HTTPS port (443, 8443 or 10000):
 
@@ -107,10 +116,10 @@ Everything is set in `.env`. After a change run `docker compose up -d`.
 |---|---|---|
 | `DASH_PASSWORD` | random | Login password. Placeholder values are refused. |
 | `PORT` | `8080` | Port (the container uses the host network). |
-| `BIND_ADDRESS` | `tailscale` | `tailscale`, `127.0.0.1` (for `tailscale serve`), `all` (LAN too, not recommended) or a specific IP. |
+| `BIND_ADDRESS` | `all` | Where it listens: `all` (LAN and Tailscale), `tailscale` (only the Tailscale address), `127.0.0.1` (only the Pi, for `tailscale serve`) or a specific IP. |
 | `TAILSCALE_INTERFACE` | `tailscale0` | Name of the Tailscale interface. |
-| `BIND_WAIT_SECONDS` | `120` | How long to wait for Tailscale at startup. |
-| `ALLOWED_NETWORKS` | Tailscale + loopback | Comma separated networks allowed to connect. `any` disables the filter. |
+| `BIND_WAIT_SECONDS` | `120` | How long to wait for Tailscale at startup (only with `BIND_ADDRESS=tailscale`). |
+| `ALLOWED_NETWORKS` | `tailscale,lan,loopback` | Networks allowed to connect, comma separated. Names (`tailscale`, `lan`, `loopback`) and CIDR networks (`192.168.1.0/24`) can be mixed. `any` disables the filter. |
 | `RETENTION_DAYS` | `30` | Days of history and events to keep. |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS. |
 | `SESSION_HOURS` | `168` | Login session length. |
@@ -141,10 +150,6 @@ Browser ── HTTP ──> FastAPI (one process, one worker)
 Reboot and shutdown: the container is not privileged. It asks Docker to run a short-lived helper container from the same image, with the permissions to enter PID 1's namespaces and run `systemctl reboot` or `poweroff`.
 
 Data (`./data/metrics.db`, SQLite in WAL mode): 10-second samples for 6 hours, 1-minute averages for 30 days, events for 30 days, settings forever, monitor results for 7 days, incidents for 90 days. About 5 MB for 30 days, few writes to the SD card. Back up by copying the file, or download it from **System**.
-
-## Security
-
-Docker socket access is root on the host. Read [SECURITY.md](SECURITY.md) before exposing anything. In short: long password, Tailscale only, never on the Internet, strict Content-Security-Policy, CSRF header on every write, password again for reboot and shutdown, login rate limit. Use `POWER_ENABLED=false` and `DOCKER_ENABLED=false` if you do not need those features.
 
 ## API
 
@@ -197,14 +202,15 @@ tests/          pytest suite, fake Docker, dev server with sample data
 
 ## Troubleshooting
 
-- **Page does not open.** `docker compose ps` and `docker compose logs`. Check that the device you use has Tailscale on, and use the Tailscale address of the Pi, not the LAN one.
+- **Page does not open.** `docker compose ps` and `docker compose logs`. On the LAN use the Pi's LAN address (`hostname -I`); away from home use the Tailscale address and check Tailscale is on. If you set `BIND_ADDRESS=tailscale` or `127.0.0.1`, the LAN address does not answer by design.
 - **"Tailscale interface not found" in the log.** Tailscale is not up on the Pi: `sudo tailscale up`, then `docker compose restart`. Another interface name goes in `TAILSCALE_INTERFACE`.
-- **403 "only through Tailscale".** The request does not come from a Tailscale address. Behind a reverse proxy on another host, add its address to `ALLOWED_NETWORKS`.
+- **403 "access not allowed from this network".** The request comes from an address that is not in `ALLOWED_NETWORKS`. Behind a reverse proxy on another host, or on an unusual LAN range, add that address or network to `ALLOWED_NETWORKS`.
 - **"Docker not available".** Check the `/var/run/docker.sock` volume and `DOCKER_ENABLED`.
 - **Reboot or shutdown do nothing.** `SELF_IMAGE` must match the real image name (`docker images`).
 - **A container I stopped from the terminal keeps coming back.** It has auto-restart on, and the dashboard restarts what it did not stop itself. Stop it from the dashboard or turn the switch off.
 - **Container memory shows "-".** The memory cgroup is off on older Raspberry Pi OS, see [Supported hardware](#supported-hardware).
 - **No "Install app".** It needs HTTPS (the `tailscale serve` variant).
+- **Login works on Tailscale but not on the LAN (or the reverse).** With `COOKIE_SECURE=true` the browser only keeps the cookie over HTTPS, so plain `http://` addresses fail to log in. Use the HTTPS address or set `COOKIE_SECURE=false`.
 - **Forgot the password.** Change `DASH_PASSWORD` in `.env`, `docker compose up -d`.
 
 ## Known limits
@@ -215,7 +221,3 @@ tests/          pytest suite, fake Docker, dev server with sample data
 - One Docker host, one Raspberry per dashboard.
 - Containers removed with `docker compose down` no longer exist for Docker, so they are not listed.
 - Not every Raspberry Pi model has been tested on real hardware (see [Supported hardware](#supported-hardware)).
-
-## License
-
-[MIT](LICENSE)

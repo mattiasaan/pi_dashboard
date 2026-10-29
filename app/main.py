@@ -38,10 +38,10 @@ ALLOWED_NETS = netguard.parse_networks(config.ALLOWED_NETWORKS)
 
 @app.middleware("http")
 async def only_allowed_networks(request: Request, call_next):
-    """Secondo livello oltre al bind: rifiuta chi non arriva da Tailscale (o dal Pi stesso)."""
+    """Secondo livello oltre al bind: rifiuta chi non arriva dalle reti ammesse (ALLOWED_NETWORKS)."""
     ip = request.client.host if request.client else None
     if not netguard.is_allowed(ip, ALLOWED_NETS):
-        return JSONResponse({"detail": "Accesso consentito solo tramite Tailscale"}, status_code=403)
+        return JSONResponse({"detail": "Accesso non consentito da questa rete"}, status_code=403)
     return await call_next(request)
 
 

@@ -26,12 +26,14 @@ DB_PATH = DATA_DIR / "metrics.db"
 HOST_ROOT = os.environ.get("HOST_ROOT", "/host")
 
 PORT = _int("PORT", 8080)
-# Dove ascolta: "tailscale" (solo l'IP dell'interfaccia Tailscale), "all", oppure un IP (es. 127.0.0.1).
-BIND_ADDRESS = os.environ.get("BIND_ADDRESS", "tailscale")
+# Dove ascolta: "all" (tutte le interfacce: rete locale e Tailscale), "tailscale" (solo l'IP dell'interfaccia
+# Tailscale), oppure un IP (es. 127.0.0.1). Chi può davvero entrare lo decide ALLOWED_NETWORKS.
+BIND_ADDRESS = os.environ.get("BIND_ADDRESS", "all")
 TAILSCALE_INTERFACE = os.environ.get("TAILSCALE_INTERFACE", "tailscale0")
 BIND_WAIT_SECONDS = _int("BIND_WAIT_SECONDS", 120)
-# Secondo livello: reti da cui sono accettate le richieste ("any" per disattivare il filtro).
-ALLOWED_NETWORKS = os.environ.get("ALLOWED_NETWORKS", "100.64.0.0/10,fd7a:115c:a1e0::/48,127.0.0.0/8,::1/128")
+# Reti da cui sono accettate le richieste: nomi (tailscale, lan, loopback) e/o indirizzi CIDR, separati da virgola.
+# "any" disattiva il filtro. Predefinito: Tailscale, rete locale e il Pi stesso, mai Internet.
+ALLOWED_NETWORKS = os.environ.get("ALLOWED_NETWORKS", "tailscale,lan,loopback")
 PASSWORD = os.environ.get("DASH_PASSWORD", "")
 # Valori copiati da un esempio: non vanno mai accettati come password vera
 PLACEHOLDER_PASSWORDS = {"cambiami", "changeme", "change-me", "password", "your-password", "la-tua-password"}

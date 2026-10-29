@@ -1,12 +1,21 @@
-"""Accesso limitato a Tailscale: scelta dell'indirizzo su cui ascoltare e filtro dei client."""
+"""Accesso limitato a Tailscale e/o alla rete locale: indirizzo su cui ascoltare e filtro dei client."""
 import ipaddress
 import time
 from typing import Callable
 
 import psutil
 
-# Reti usate da Tailscale (CGNAT IPv4 e ULA IPv6) più il loopback (necessario per `tailscale serve`).
-DEFAULT_ALLOWED = "100.64.0.0/10,fd7a:115c:a1e0::/48,127.0.0.0/8,::1/128"
+# Gruppi di reti con un nome, usabili in ALLOWED_NETWORKS insieme a indirizzi CIDR espliciti.
+NETWORK_GROUPS = {
+    # CGNAT IPv4 e ULA IPv6 di Tailscale
+    "tailscale": "100.64.0.0/10,fd7a:115c:a1e0::/48",
+    # reti private: casa e ufficio (IPv4 privati, link-local, IPv6 ULA e link-local)
+    "lan": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7,fe80::/10",
+    # il Pi stesso (serve anche a `tailscale serve`)
+    "loopback": "127.0.0.0/8,::1/128",
+}
+# Predefinito: Tailscale, rete locale e il Pi stesso. Gli indirizzi pubblici (Internet) restano esclusi.
+DEFAULT_ALLOWED = "tailscale,lan,loopback"
 _CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
 
@@ -15,7 +24,10 @@ def parse_networks(text: str) -> list | None:
     text = (text or "").strip()
     if text.lower() in ("any", "all", "*"):
         return None
-    nets = [ipaddress.ip_network(p.strip(), strict=False) for p in text.split(",") if p.strip()]
+    parts = []
+    for p in (x.strip() for x in text.split(",")):
+        parts += NETWORK_GROUPS.get(p.lower(), p).split(",") if p else []
+    nets = [ipaddress.ip_network(p.strip(), strict=False) for p in parts if p.strip()]
     if not nets:
         raise ValueError("ALLOWED_NETWORKS è vuota")
     return nets
