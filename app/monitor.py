@@ -38,6 +38,8 @@ class Result(NamedTuple):
 def parse_status_spec(spec: str) -> list[tuple[int, int]]:
     """'200-399,404' -> [(200, 399), (404, 404)]"""
     out = []
+    if len(spec or "") > 100:
+        raise ValueError("Codici attesi troppo lunghi")
     for part in re.split(r"[,\s]+", (spec or "").strip()):
         if not part:
             continue
@@ -66,8 +68,12 @@ def validate_check(name: str, kind: str, target: str, interval: int) -> tuple[st
         if u.scheme not in ("http", "https") or not u.hostname:
             raise ValueError("Indirizzo non valido: deve iniziare con http:// o https://")
     else:
-        m = re.fullmatch(r"\[?([A-Za-z0-9._:-]+?)\]?:(\d{1,5})", target)
-        if not m or not 1 <= int(m.group(2)) <= 65535:
+        # Niente espressioni regolari sul testo scritto dall'utente: si taglia con rpartition e si controlla ogni parte.
+        host, _, port = target[:300].rpartition(":")
+        if host.startswith("[") and host.endswith("]"):
+            host = host[1:-1]
+        valid_host = 0 < len(host) <= 253 and all(c.isascii() and (c.isalnum() or c in "._:-") for c in host)
+        if len(target) > 300 or not valid_host or not (port.isascii() and port.isdigit() and 1 <= int(port) <= 65535):
             raise ValueError("Indirizzo non valido: usa il formato host:porta")
     return name, kind, target, int(interval)
 
@@ -133,6 +139,7 @@ def cert_days_left(host: str, port: int, timeout: float = 5.0) -> int | None:
     """Giorni mancanti alla scadenza del certificato (None se non leggibile)."""
     try:
         ctx = ssl.create_default_context()
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2          # niente TLS 1.0 e 1.1
         with socket.create_connection((host, port), timeout=timeout) as raw:
             with ctx.wrap_socket(raw, server_hostname=host) as tls:
                 cert = tls.getpeercert()

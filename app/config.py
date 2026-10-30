@@ -64,6 +64,13 @@ DOCKER_ENABLED = os.environ.get("DOCKER_ENABLED", "true").lower() == "true"
 POWER_ENABLED = os.environ.get("POWER_ENABLED", "true").lower() == "true"
 
 
+def _write_private(path: Path, text: str) -> None:
+    """Crea il file già con permessi 0600 (nessun istante in cui è leggibile da altri)."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+
+
 def ensure_runtime() -> str:
     """Crea la cartella dati, risolve password e chiave di sessione."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -73,13 +80,15 @@ def ensure_runtime() -> str:
               "Imposta una password tua nel file .env.", flush=True)
         PASSWORD = ""
     if not PASSWORD:
-        PASSWORD = secrets.token_urlsafe(9)
-        print(f"[pi-dashboard] DASH_PASSWORD non impostata. Password temporanea: {PASSWORD}", flush=True)
+        # La password generata non si scrive mai nei log: va in un file leggibile solo da root, e resta la stessa
+        # a ogni avvio finché non imposti DASH_PASSWORD.
+        pw_file = DATA_DIR / ".password"
+        if not pw_file.exists():
+            _write_private(pw_file, secrets.token_urlsafe(12))
+        PASSWORD = pw_file.read_text().strip()
+        print(f"[pi-dashboard] DASH_PASSWORD non impostata: uso la password generata e salvata in {pw_file}. "
+              "Leggila con: docker compose exec pi-dashboard cat /data/.password", flush=True)
     key_file = DATA_DIR / ".secret"
     if not key_file.exists():
-        key_file.write_text(secrets.token_hex(32))
-        try:
-            key_file.chmod(0o600)
-        except OSError:
-            pass
+        _write_private(key_file, secrets.token_hex(32))
     return key_file.read_text().strip()

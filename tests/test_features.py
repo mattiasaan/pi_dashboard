@@ -4,6 +4,7 @@ import re
 import socket
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -534,16 +535,59 @@ def test_container_stats_old_docker_falls_back(monkeypatch):
 
 
 # ---------------------------------------------------------------- sicurezza per la release pubblica
-def test_placeholder_password_is_rejected(monkeypatch, tmp_path, capsys):
+def test_placeholder_password_is_rejected_and_generated_one_is_never_logged(monkeypatch, tmp_path, capsys):
     from app import config
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    for weak in ("cambiami", "ChangeMe", " password "):
+    seen = set()
+    for weak in ("cambiami", "ChangeMe", " password ", ""):
         monkeypatch.setattr(config, "PASSWORD", weak)
         config.ensure_runtime()
         assert config.PASSWORD not in config.PLACEHOLDER_PASSWORDS and len(config.PASSWORD) >= 10
-    assert "valore d'esempio" in capsys.readouterr().out
+        seen.add(config.PASSWORD)
+    out = capsys.readouterr().out
+    assert "valore d'esempio" in out
+    assert not any(pw in out for pw in seen)                       # la password non compare mai nei log
+    assert len(seen) == 1                                          # e resta la stessa a ogni avvio
+    f = tmp_path / ".password"
+    assert f.read_text().strip() in seen and oct(f.stat().st_mode & 0o777) == "0o600"
+    assert oct((tmp_path / ".secret").stat().st_mode & 0o777) == "0o600"
     monkeypatch.setattr(config, "PASSWORD", "una-frase-lunga-mia")
     config.ensure_runtime(); assert config.PASSWORD == "una-frase-lunga-mia"
+
+
+def test_bulk_errors_do_not_leak_exception_details(authed, monkeypatch):
+    from app import docker_api
+    def boom(name, action):
+        raise RuntimeError("segreto interno /var/lib/docker/overlay2/abc token=xyz")
+    monkeypatch.setattr(docker_api, "action", boom)
+    r = authed.post("/api/containers-bulk", json={"action": "start", "names": ["a"]}).json()["results"][0]
+    assert r["ok"] is False and "segreto" not in str(r) and "overlay2" not in str(r) and "xyz" not in str(r)
+
+
+def test_tcp_target_parsing_is_strict_and_fast():
+    ok = ["host:80", "192.168.1.5:443", "[::1]:8080", "a-b.c_d:65535", "nas.local:1"]
+    bad = ["host", "host:", ":80", "host:0", "host:65536", "host:80x", "ho st:80", "host:²", "[::1:80", "h/o:80", "a" * 400 + ":80",
+           "a" * 300 + ":", "\n:80"]
+    for t in ok:
+        assert mon.validate_check("x", "tcp", t, 60)[2] == t
+    for t in bad:
+        with pytest.raises(ValueError):
+            mon.validate_check("x", "tcp", t, 60)
+    t0 = time.perf_counter()
+    for payload in ("a" * 100000 + "!", "[" * 100000, ":" * 100000):    # input ostile: deve restare istantaneo
+        with pytest.raises(ValueError):
+            mon.validate_check("x", "tcp", payload, 60)
+    assert time.perf_counter() - t0 < 0.5
+
+
+def test_cert_check_refuses_old_tls(monkeypatch):
+    captured = {}
+    real = mon.ssl.create_default_context
+    def spy():
+        ctx = real(); captured["ctx"] = ctx; return ctx
+    monkeypatch.setattr(mon.ssl, "create_default_context", spy)
+    mon.cert_days_left("127.0.0.1", 1, timeout=0.2)                  # nessun server: torna None ma il contesto è creato
+    assert captured["ctx"].minimum_version >= mon.ssl.TLSVersion.TLSv1_2
 
 
 def test_security_headers_and_no_inline_scripts(client):

@@ -142,7 +142,7 @@ function legend(el, series) {
 
 // ------------------------------------------------------------------ router e aggiornamenti periodici
 const tasks = [];
-const enter = {};
+const enter = Object.create(null);          // senza prototipo: un nome come "constructor" non è una funzione di entrata
 function every(ms, tabs, fn) { tasks.push({ ms, tabs: tabs === '*' ? null : [].concat(tabs), fn, last: 0, busy: false }); }
 function loop() {
   const now = Date.now();
@@ -165,7 +165,7 @@ function route() {
   document.body.classList.toggle('kiosk', t === 'schermo');
   if (t === 'schermo' && was !== 'schermo') kioskStart(); else if (was === 'schermo' && t !== 'schermo') kioskStop();
   tasks.forEach((x) => { if (!x.tabs || x.tabs.includes(t)) x.last = 0; });
-  enter[t]?.();
+  if (TABS.includes(t) && typeof enter[t] === 'function') enter[t]();
   if (S.last) renderLive(S.last);
   window.scrollTo(0, 0);
 }

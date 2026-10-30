@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import time
@@ -14,6 +15,7 @@ from . import __version__, alerts, auth, config, db, docker_api, netguard, syste
 from .collector import collector
 from .monitor import MAX_CHECKS, monitor, validate_check, validate_options
 
+log = logging.getLogger("pi-dashboard")
 STATIC = Path(__file__).parent / "static"
 RANGES = {"15m": 900, "1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
 
@@ -256,7 +258,17 @@ def containers_bulk(body: BulkIn):
             raise HTTPException(503, str(e)) from None
         except (LookupError, PermissionError, RuntimeError, ValueError) as e:
             collector.expected_stops.discard(name)
-            results.append({"name": name, "ok": False, "error": str(e)})
+            # Al browser va solo un testo fisso: i dettagli dell'errore (percorsi, risposte di Docker) restano nel log.
+            if isinstance(e, LookupError):
+                why = "Container non trovato"
+            elif isinstance(e, PermissionError):
+                why = "Non posso fermare la dashboard da sé stessa"
+            elif isinstance(e, ValueError):
+                why = "Operazione non valida"
+            else:
+                log.warning("Operazione %s su %s non riuscita: %s", body.action, name, e)
+                why = "Docker non ha eseguito l'operazione (dettagli nei log)"
+            results.append({"name": name, "ok": False, "error": why})
     done = [r["name"] for r in results if r["ok"]]
     if done:
         label = {"start": "avviati", "stop": "fermati", "restart": "riavviati"}[body.action]
